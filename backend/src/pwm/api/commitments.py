@@ -18,16 +18,15 @@ from pwm.api.schemas import (
 from pwm.db.models import Assertion, AssertionRelation, User
 from pwm.extraction.factory import build_stages
 from pwm.extraction.quotes import normalize
-from pwm.pipeline.store import process_user
+from pwm.pipeline.store import open_record, process_user
 from pwm.pipeline.text import visible_body, visible_text
-from pwm.sources import SourceRecord
 
 router = APIRouter()
 CONTEXT_CHARS = 280
 
 
 def _source_summary(assertion: Assertion) -> SourceSummary:
-    record = SourceRecord.model_validate(assertion.source.record)
+    record = open_record(assertion.source.record)
     return SourceSummary(
         kind=record.kind.value,
         sender_name=record.sender.name if record.sender else None,
@@ -109,7 +108,7 @@ def _load(session: Session, user: User, assertion_id: UUID) -> Assertion:
 def _context(assertion: Assertion) -> tuple[str, str, str]:
     """The evidence in its surroundings, as (before, quote, after), all normalized the same
     way so the app can highlight the quote without guessing at whitespace or quote marks."""
-    record = SourceRecord.model_validate(assertion.source.record)
+    record = open_record(assertion.source.record)
     quote = normalize(assertion.evidence_quote)
     text = normalize(visible_body(record))
     if quote not in text:

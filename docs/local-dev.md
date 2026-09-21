@@ -53,6 +53,17 @@ uv run python -m pwm.cli demo
 ```
 Database tests use a separate `pwm_test` database on the same Postgres and are skipped if it is not running.
 
+## Google sign-in without Google
+```sh
+FAKE_GOOGLE=1 scripts/demo.sh            # also starts a stand-in for Google on :9090
+# in the app: Continue with Google  ->  you are signed in as the demo person
+uv run python -m pwm.cli work            # run the queued syncs (same environment variables)
+```
+The stand-in serves the synthetic mailbox through Google's documented API shapes. It proves our side of the contract, not Google's.
+
+## Google sign-in with Google (when an OAuth client exists)
+Create an OAuth client of type *Web application* with redirect URI `http://localhost:8000/auth/google/callback`, then set `PWM_GOOGLE_CLIENT_ID`, `PWM_GOOGLE_CLIENT_SECRET` and `PWM_DATA_KEY` (see `docs/env.md`) and start normally. In "Testing" publishing status Google expires refresh tokens after 7 days (decisions D15); the connection then shows "Reconnect with Google".
+
 ## Using a real model
 ```sh
 export ANTHROPIC_API_KEY=...            # never commit this

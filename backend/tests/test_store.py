@@ -25,6 +25,16 @@ from pwm_eval.fixture import load_fixture
 FIXTURE = load_fixture()
 
 
+def _first_live_commitment(session: Session) -> Assertion | None:
+    """A deterministic pick. `.first()` with no order returns whatever the database likes,
+    and a row that has been superseded cannot be confirmed or corrected."""
+    return session.scalars(
+        select(Assertion)
+        .where(Assertion.superseded_by_id.is_(None), Assertion.kind == "commitment")
+        .order_by(Assertion.evidence_quote)
+    ).first()
+
+
 def count(session: Session, model: type) -> int:
     return session.scalar(select(func.count()).select_from(model)) or 0
 
@@ -77,7 +87,7 @@ def test_every_stored_assertion_has_provenance(session: Session, world: User) ->
 
 
 def test_a_users_decision_survives_reprocessing(session: Session, world: User) -> None:
-    target = session.scalars(select(Assertion).where(Assertion.review == "unreviewed")).first()
+    target = _first_live_commitment(session)
     assert target is not None
     review.confirm(session, world, target.id)
     session.commit()
@@ -98,7 +108,13 @@ def test_deleting_a_source_removes_everything_derived_from_it(
 
 
 def test_deleting_a_user_leaves_nothing_behind(session: Session, world: User) -> None:
-    review.confirm(session, world, session.scalars(select(Assertion.id)).first())  # type: ignore[arg-type]
+    live = session.scalars(
+        select(Assertion)
+        .where(Assertion.superseded_by_id.is_(None), Assertion.kind == "commitment")
+        .order_by(Assertion.evidence_quote)
+    ).first()
+    assert live is not None
+    review.confirm(session, world, live.id)
     session.delete(world)
     session.commit()
     for model in (
@@ -117,7 +133,7 @@ def test_deleting_a_user_leaves_nothing_behind(session: Session, world: User) ->
 def test_a_correction_is_a_new_assertion_and_the_original_is_kept(
     session: Session, world: User
 ) -> None:
-    original = session.scalars(select(Assertion).where(Assertion.kind == "commitment")).first()
+    original = _first_live_commitment(session)
     assert original is not None
     fixed = review.correct(session, world, original.id, value="send Tom the Q3 deck")
     assert (fixed.origin, fixed.review, fixed.value) == (
@@ -196,7 +212,7 @@ class SilentExtractor(HeuristicExtractor):
 def test_unreviewed_guesses_a_new_extractor_no_longer_makes_are_retired(
     session: Session, world: User
 ) -> None:
-    kept = session.scalars(select(Assertion).where(Assertion.kind == "commitment")).first()
+    kept = _first_live_commitment(session)
     assert kept is not None
     review.confirm(session, world, kept.id)
     process_user(session, world, HeuristicTriager(), SilentExtractor())

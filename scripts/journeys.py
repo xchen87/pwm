@@ -3,7 +3,9 @@
 Each takes (api, check, run). Add a journey whenever a slice adds user-visible behaviour.
 """
 
+import http.client
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 
 def _q3(api: Any) -> dict[str, Any]:
@@ -179,3 +181,85 @@ def journey_40_same_person(api: Any, check: Any, run: Any) -> None:
     links = {i["address"]: i["link"] for p in api.get("/people") for i in p["identifiers"]}
     check(links[identifier["address"]] == "user", "reprocessing never undoes a link the user made")
     api.post("/people/identifiers/00000000-0000-0000-0000-000000000000/confirm", expect=404)
+
+
+def _hop(url: str) -> tuple[int, str]:
+    """One request, redirects not followed: (status, Location)."""
+    target = urlparse(url)
+    connection = http.client.HTTPConnection(target.netloc, timeout=20)
+    connection.request("GET", f"{target.path}?{target.query}")
+    response = connection.getresponse()
+    response.read()
+    return response.status, response.getheader("Location") or ""
+
+
+def journey_50_google_sign_in_and_sync(api: Any, check: Any, run: Any) -> None:
+    # The stand-in Google account is the same person as the local development user, so
+    # signing in adopts that account. Start it empty, to see only what Google brings in.
+    api.call("DELETE", "/me")
+    available = {a["connector"]: a["available"] for a in api.get("/connections")["available"]}
+    check(
+        available["gmail"] and available["google_calendar"],
+        "Google is offered when the server is configured",
+    )
+
+    status, to_google = _hop(f"{api.base}/auth/google/start?redirect=pwm%3A%2F%2Fauth")
+    check(status == 302 and to_google.startswith(api.google), "sign-in sends the browser to Google")
+    check(
+        "code_challenge=" in to_google and "client_secret" not in to_google,
+        "with PKCE and no secret in the URL",
+    )
+    status, to_callback = _hop(to_google)
+    check(
+        status == 302 and to_callback.startswith(api.base),
+        "Google sends the browser back to the API",
+    )
+    status, to_app = _hop(to_callback)
+    check(
+        status == 302 and to_app.startswith("pwm://auth?code="),
+        "the API hands the app a single-use code",
+    )
+    check(_hop(to_callback)[0] == 400, "a replayed callback is refused")
+    check(
+        _hop(f"{api.base}/auth/google/start?redirect=https%3A%2F%2Fevil.example")[0] == 400,
+        "foreign redirects are refused",
+    )
+
+    code = parse_qs(urlparse(to_app).query)["code"][0]
+    session = api.post("/auth/session", {"code": code})
+    api.post("/auth/session", {"code": code}, expect=400)
+    api.token = session["token"]
+    try:
+        check(
+            api.get("/auth/me")["signed_in_with_google"],
+            "the session identifies the Google account",
+        )
+        check(
+            api.get("/commitments") == [],
+            "nothing is known until the sync has run",
+        )
+
+        out = run("uv", "run", "python", "-m", "pwm.cli", "work")
+        check("job" in out, "the worker runs the queued syncs")
+        connections = {c["connector"]: c for c in api.get("/connections")["connected"]}
+        check(
+            connections["gmail"]["status"] == "ok" and connections["gmail"]["sources"] == 104,
+            "Gmail is read in full, page by page",
+        )
+        check(connections["google_calendar"]["sources"] == 15, "Calendar is read")
+        check(
+            api.get("/home")["needs_attention_total"] >= 10,
+            "the signed-in user's world is built from Google data",
+        )
+        check(
+            api.post("/ask", {"question": "What did I promise Tom?"})["grounded"],
+            "and can be asked about",
+        )
+
+        api.call("DELETE", "/connections/gmail")
+        api.call("DELETE", "/connections/google_calendar")
+        check(api.get("/commitments") == [], "disconnecting Google removes what it brought in")
+        api.post("/auth/logout")
+        check(api.get("/home", expect=401) is not None, "a signed-out session is refused")
+    finally:
+        api.token = None

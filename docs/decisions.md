@@ -215,3 +215,33 @@ Clustering used to promote the address with the longest display name to primary,
 
 ### D54. A user's dismissal takes effect immediately
 Dismissing a replacement frees what it replaced in the same transaction, and the endpoint re-reads the mailbox. Waiting for "the next run" left confirmed facts invisible.
+
+## 2026-09-21 — Slice 4, built against a stand-in for Google
+
+**Founder decisions:** build Slice 4 now against a fake Google rather than wait for an OAuth client; Google sign-in is the only way to sign in.
+
+### D55. What "built against a fake Google" does and does not prove
+`pwm.devtools.fake_google` serves the synthetic mailbox through the documented shapes of the OAuth, userinfo, Gmail v1 and Calendar v3 endpoints, as a real separate server in the functional test, and can be made to misbehave (429/5xx with Retry-After, expired access tokens, forgotten history ids, expired sync tokens, a revoked grant, withheld scopes). It proves our side of the contract **as we read the documentation**. It cannot prove Google agrees. Until a real OAuth client exists, Slice 4 is "built, unverified", and the first real sign-in should be expected to find differences.
+The synthetic mailbox gives identical pipeline results through the Gmail path and directly (tested), so connector normalization loses nothing the pipeline uses.
+
+### D56. Sign-in flow
+System browser → `/auth/google/start` (PKCE S256, random `state` stored server-side with the verifier, allow-listed app redirect) → Google → `/auth/google/callback` (state is single-use and expires in 10 minutes; scopes are checked, so declining mail access is not a sign-in; email must be verified) → redirect to the app with a **single-use login code** valid two minutes → the app POSTs it for a session token. The session token never appears in a URL; only its hash is stored; Google's tokens never leave the server. Google's account id identifies the user. A verified email adopts an account never linked to Google (the local development identity) and never one linked to a different Google identity.
+Userinfo is read with the access token we just received over TLS from Google's token endpoint, so no ID-token signature checking is needed and no JWT library is added.
+
+### D57. Tokens and bodies are encrypted with a key that is not in the database
+AES-256-GCM, random nonce per value, the purpose bound in as associated data (a token cannot be replayed as a body), `enc:v1:` prefix for key rotation later. `PWM_DATA_KEY` is required before Google can be used at all. Message **bodies are encrypted at rest**; metadata (sender, subject, dates, labels) stays in the clear so it can be queried.
+**This revises D9/D29:** bodies are stored (encrypted), not re-fetched on demand. The pipeline re-reads every source on every run (D19, D44) — that is what lets new rules, new prompt versions and the user's corrections take effect — and that needs the text. A retention window after which bodies are purged and their already-verified facts frozen is the intended next step; it is recorded here as **not built**.
+
+### D58. Sync: newest first, one page per job, opaque cursors
+Connectors return `FetchResult(records, cursor, more, skipped)`; the cursor is opaque to everything else. Gmail: capture the history id **before** the backfill so nothing arriving during it is missed; list `newer_than:90d` newest first, 50 per page, one page per job (processed and visible before the next is fetched); then incremental by `history.list`; a forgotten history id (404) restarts the backfill, which idempotent ingestion makes harmless. Calendar: window read, then `syncToken`; 410 re-reads the window. An edited event is a **new immutable source** (its id carries `updated`), so a moved meeting is reported as a change by ordinary reconciliation.
+429/5xx retry with backoff honouring Retry-After, bounded at five attempts; a 401 refreshes the access token once; a revoked or expired grant marks the connection `needs_reconnect` and the job is *done*, not retried forever. Errors carry a status code, never a response body.
+**Not handled yet:** messages deleted in Gmail are not removed here; label changes are not tracked.
+
+### D59. Forged senders
+Gmail's `Authentication-Results` header is kept. A message that fails DMARC, or both SPF and DKIM, is flagged suspicious: low confidence, no ability to update or dispute anything, a warning on its inspection screen. Absent results are not held against a message. This closes the residual noted in D32/D42 for mail that Gmail itself judged forged.
+
+### D60. Taking it back
+Disconnecting a Google source deletes what it brought in; when the last one goes, the grant is revoked at Google and the stored token destroyed whether or not Google could be reached. "Delete everything" revokes first, then deletes the user and everything by cascade; a signed-in account is simply gone.
+
+### D61. Dependencies added
+`httpx` (HTTP client; already present for tests) and `cryptography` (AES-GCM). In the app: `expo-web-browser` (system-browser auth sessions) and `expo-secure-store` (Keychain/Keystore), both part of the Expo SDK. The fake Google parses form bodies by hand so that test tooling adds no dependency.

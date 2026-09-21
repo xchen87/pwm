@@ -1,9 +1,10 @@
 from typing import Annotated
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pwm import auth
 from pwm.config import get_settings
 from pwm.db.models import User
 from pwm.db.session import get_session
@@ -13,15 +14,21 @@ from pwm.sources import Party
 DbSession = Annotated[Session, Depends(get_session)]
 
 
-def current_user(session: DbSession) -> User:
-    """Local development identity. Slice 4 replaces this with real authentication;
-    every handler already receives the user from here and nowhere else.
+def current_user(session: DbSession, authorization: Annotated[str | None, Header()] = None) -> User:
+    """Who is asking. Every handler gets the user from here and nowhere else.
 
-    There is no authentication yet, so outside a local environment nobody is anybody:
-    every request is refused, whatever rows exist.
+    A valid session token always wins. Without one, the local development user is served
+    only when the environment is "local" and dev login is on; anywhere else it is a 401,
+    whatever rows exist.
     """
     settings = get_settings()
-    if settings.environment != "local":
+    if authorization:
+        scheme, _, token = authorization.partition(" ")
+        user = auth.user_for(session, token.strip()) if scheme.lower() == "bearer" else None
+        if user is None:
+            raise HTTPException(401, "sign in again")
+        return user
+    if settings.environment != "local" or not settings.dev_login:
         raise HTTPException(401, "sign in required")
     user = session.scalar(select(User).where(User.email == settings.dev_user_email))
     if user is None:

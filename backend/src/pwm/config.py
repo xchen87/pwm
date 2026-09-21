@@ -21,6 +21,34 @@ class Settings(BaseSettings):
     extraction_model: str = "claude-opus-5"
     cors_origins: list[str] = ["http://localhost:8081", "http://localhost:19006"]
 
+    # Without a session, serve the local development user. Only ever honoured when
+    # environment is "local"; everywhere else a session is required.
+    dev_login: bool = True
+    session_days: int = 30
+
+    # Google sign-in and read-only Gmail/Calendar. Unset means "not available".
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    # Public URL of this API, used to build the OAuth callback address.
+    public_url: str = "http://localhost:8000"
+    # Where the app may be sent after sign-in. Anything else is refused (no open redirects).
+    app_redirects: list[str] = ["pwm://auth", "http://localhost:8081/auth", "exp://"]
+    # Overridable so tests and local development can point at a stand-in for Google.
+    google_auth_url: str = "https://accounts.google.com/o/oauth2/v2/auth"
+    google_token_url: str = "https://oauth2.googleapis.com/token"
+    google_revoke_url: str = "https://oauth2.googleapis.com/revoke"
+    google_userinfo_url: str = "https://openidconnect.googleapis.com/v1/userinfo"
+    google_api_url: str = "https://www.googleapis.com"
+    backfill_days: int = 90
+
+    # Base64 of 32 random bytes. Encrypts refresh tokens and message bodies at rest.
+    # How to generate one: docs/env.md.
+    data_key: str | None = None
+
+    @property
+    def google_configured(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret and self.data_key)
+
 
 def get_settings() -> Settings:
     return Settings()

@@ -3,6 +3,8 @@
 #   scripts/demo.sh            start empty, at "Connect your life" (wipes the local demo user first)
 #   scripts/demo.sh --loaded   start with the demo mailbox already connected and a brief ready
 #   scripts/demo.sh --keep     keep everything exactly as you left it last time
+#   FAKE_GOOGLE=1 scripts/demo.sh   also run a stand-in for Google, so "Continue with Google"
+#                                   can be clicked through (it signs you in as the demo person)
 # No API key and no real mailbox are involved: extraction is the rule-based stand-in.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -32,10 +34,25 @@ case "${1:-}" in
   *) uv run python -m pwm.cli reset ;;
 esac
 
+PIDS=()
+if [[ -n "${FAKE_GOOGLE:-}" ]]; then
+  GOOGLE_PORT="${GOOGLE_PORT:-9090}"
+  export PWM_GOOGLE_CLIENT_ID=fake-client PWM_GOOGLE_CLIENT_SECRET=fake-secret
+  export PWM_DATA_KEY="${PWM_DATA_KEY:-$(python3 -c 'import base64,os;print(base64.b64encode(os.urandom(32)).decode())')}"
+  export PWM_PUBLIC_URL="http://localhost:$API_PORT"
+  export PWM_GOOGLE_AUTH_URL="http://localhost:$GOOGLE_PORT/o/oauth2/v2/auth"
+  export PWM_GOOGLE_TOKEN_URL="http://localhost:$GOOGLE_PORT/token"
+  export PWM_GOOGLE_REVOKE_URL="http://localhost:$GOOGLE_PORT/revoke"
+  export PWM_GOOGLE_USERINFO_URL="http://localhost:$GOOGLE_PORT/v1/userinfo"
+  export PWM_GOOGLE_API_URL="http://localhost:$GOOGLE_PORT"
+  uv run uvicorn pwm.devtools.fake_google:app --port "$GOOGLE_PORT" --log-level warning &
+  PIDS+=($!)
+  echo "  Fake Google on :$GOOGLE_PORT. After signing in, run in another terminal:  uv run python -m pwm.cli work"
+fi
 uv run uvicorn pwm.api.main:app --port "$API_PORT" --log-level warning &
-API_PID=$!
+PIDS+=($!)
 # Stop only what this script started, never the whole process group.
-trap 'kill "$API_PID" 2>/dev/null || true' EXIT
+trap 'kill "${PIDS[@]}" 2>/dev/null || true' EXIT
 (cd app && [[ -d node_modules ]] || npm install --no-audit --no-fund >/dev/null)
 echo
 echo "  App:  http://localhost:$APP_PORT   (API on :$API_PORT, demo clock $PWM_FIXED_NOW)"

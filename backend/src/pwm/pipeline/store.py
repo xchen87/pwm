@@ -15,7 +15,8 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from pwm import clock
+from pwm import clock, crypto
+from pwm.config import get_settings
 from pwm.db.models import (
     Assertion,
     AssertionRelation,
@@ -61,8 +62,27 @@ def ensure_user(session: Session, party: Party) -> User:
     return user
 
 
+def seal_record(record: SourceRecord) -> dict[str, Any]:
+    """The stored form of a record. With a data key configured, the body is encrypted:
+    metadata stays queryable, but a database dump does not contain anyone's mail."""
+    stored = record.model_dump(mode="json")
+    if get_settings().data_key and stored.get("body"):
+        stored["body"] = crypto.encrypt(stored["body"], "source-body")
+    return stored
+
+
+def open_record(stored: dict[str, Any]) -> SourceRecord:
+    if crypto.is_encrypted(stored.get("body")):
+        stored = {**stored, "body": crypto.decrypt(stored["body"], "source-body")}
+    return SourceRecord.model_validate(stored)
+
+
 def ingest(
-    session: Session, user: User, records: Sequence[SourceRecord], connector: str = "manual"
+    session: Session,
+    user: User,
+    records: Sequence[SourceRecord],
+    connector: str = "manual",
+    enqueue_job: bool = True,
 ) -> int:
     """Store new source records and queue processing. Safe to call repeatedly with the same data."""
     inserted = 0
@@ -76,13 +96,13 @@ def ingest(
                 kind=record.kind.value,
                 thread_id=record.thread_id,
                 observed_at=record.observed_at,
-                record=record.model_dump(mode="json"),
-            )  # fmt: skip
+                record=seal_record(record),
+            )
             .on_conflict_do_nothing(index_elements=["user_id", "external_id"])
             .returning(Source.id)
         )
         inserted += len(session.execute(statement).all())
-    if inserted:
+    if inserted and enqueue_job:
         enqueue(session, user)
     return inserted
 
@@ -482,7 +502,7 @@ def process_user(
     session.execute(select(func.pg_advisory_xact_lock(func.hashtext(str(user.id)))))
     sources = list(session.scalars(select(Source).where(Source.user_id == user.id)))
     source_ids = {s.external_id: s.id for s in sources}
-    records = [SourceRecord.model_validate(s.record) for s in sources]
+    records = [open_record(s.record) for s in sources]
     cache = StageCache(session, user, source_ids)
     if cache_sink is not None:
         cache_sink.append(cache)

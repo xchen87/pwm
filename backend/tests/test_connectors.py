@@ -15,12 +15,14 @@ def b64(text: str) -> str:
 
 
 def test_demo_mailbox_streams_newest_first_and_resumes() -> None:
-    records = list(DemoMailbox().fetch(None))
-    assert len(records) == 122
+    first = DemoMailbox().fetch(None)
+    records = first.records
+    assert len(records) == 122 and not first.more
     assert records == sorted(records, key=lambda r: r.observed_at, reverse=True)
     # The record stamped exactly at the cursor comes back too; ingestion ignores repeats.
-    newer = list(DemoMailbox().fetch(records[10].observed_at))
-    assert len(newer) == 11
+    again = DemoMailbox().fetch(first.cursor)
+    assert 1 <= len(again.records) < 5
+    assert len(DemoMailbox().fetch(records[10].observed_at.isoformat()).records) == 11
 
 
 def test_a_gmail_message_becomes_a_source_record() -> None:
@@ -60,7 +62,8 @@ def test_a_calendar_event_becomes_a_source_record() -> None:
         "attendees": [{"email": "jamie@ortiz.example", "self": True}, {"email": "Rosa@oak.example", "displayName": "Rosa"}],
     }  # fmt: skip
     record = calendar_event(event, ME)
-    assert record.kind is SourceKind.CALENDAR_EVENT and record.id == "gcal:ev1"
+    assert record.kind is SourceKind.CALENDAR_EVENT
+    assert record.id == "gcal:ev1@2026-09-01T10:00:00Z"  # the version is part of the identity
     assert [p.address for p in record.recipients] == ["rosa@oak.example"]
     assert record.starts_at is not None and record.starts_at.utcoffset() is not None
     assert route(record, ME) is Route.STRUCTURED

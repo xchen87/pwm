@@ -352,3 +352,46 @@ def test_records_are_cleaned_and_bounded_where_they_are_made() -> None:
         SourceRecord(
             id="i" * 250, kind=SourceKind.EMAIL, observed_at=datetime(2026, 9, 1, tzinfo=UTC)
         )
+
+
+def test_mail_that_fails_sender_authentication_cannot_be_trusted_or_update_anything() -> None:
+    bank = Party(name="Harbor Bank", address="billing@harborbank.example")
+    wrote = email("x").model_copy(update={"id": "sent", "sender": USER, "recipients": (bank,), "provider_labels": ("SENT",),
+                                          "observed_at": datetime(2026, 9, 1, tzinfo=UTC)})  # fmt: skip
+    real = email("Your payment is due September 20.").model_copy(
+        update={"id": "real", "sender": bank, "observed_at": datetime(2026, 9, 2, tzinfo=UTC),
+                "headers": {"Authentication-Results": "mx.google.com; dkim=pass; spf=pass; dmarc=pass"}}
+    )  # fmt: skip
+    forged = email("Correction: your payment is due October 30.").model_copy(
+        update={"id": "forged", "sender": bank, "observed_at": datetime(2026, 9, 3, tzinfo=UTC),
+                "headers": {"Authentication-Results": "mx.google.com; dkim=fail; spf=softfail; dmarc=fail"}}
+    )  # fmt: skip
+    result = run_pipeline([wrote, real, forged], USER, AlwaysRelevant(), HeuristicExtractor())
+    by_source = {a.candidate.source_id: a for a in result.assertions}
+    assert by_source["real"].confidence.value == "high" and by_source["real"].superseded_by is None
+    assert by_source["forged"].confidence.value == "low"
+    assert result.relations == []
+    assert next(o for o in result.outcomes if o.source_id == "forged").suspicious
+
+
+def test_the_synthetic_mailbox_reads_the_same_through_the_gmail_path() -> None:
+    from pwm.connectors.google import calendar_event, gmail_message
+    from pwm.devtools.fake_google import event_json, gmail_json
+
+    direct = [s for s in FIXTURE.sources if s.kind is not SourceKind.USER_CAPTURE]
+    through_google = [
+        gmail_message(gmail_json(s, 1))
+        if s.kind is SourceKind.EMAIL
+        else calendar_event(event_json(s), USER)
+        for s in direct
+    ]
+    found = lambda sources: sorted(  # noqa: E731
+        (
+            a.candidate.kind.value,
+            a.candidate.evidence_quote,
+            str(a.candidate.due),
+            a.confidence.value,
+        )
+        for a in run_pipeline(sources, USER, HeuristicTriager(), HeuristicExtractor()).assertions
+    )
+    assert found(through_google) == found(direct)

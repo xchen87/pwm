@@ -23,7 +23,7 @@ Working constraint (founder, 2026-09-21): reach a showable, demo-ready MVP **wit
 | Slice 2 — What changed + World Brief | done; independently reviewed, findings fixed | commits `00a624e` + review-fix commit; verify green |
 | Slice 3 — Ask Your World + Remember / Correct / Forget | done; independently reviewed, findings fixed | same |
 | Demo readiness — onboarding, connections/disconnect/delete, same-person confirmation, demo launcher and script, in-browser checks | done; independently reviewed, findings fixed | commit `926d450` + next; verify green (122 tests, 87 functional checks incl. the built app in headless Chrome) |
-| Slice 4 — accounts, real Gmail/Calendar | connector protocol, demo connector, Gmail/Calendar payload normalization built and tested; **OAuth, fetching, token storage, accounts need a Google OAuth client — founder** | commit `926d450` |
+| Slice 4 — accounts, real Gmail/Calendar | **built against a stand-in for Google; unverified against Google itself** (founder chose this on 2026-09-21); independent review in progress | branch `slice-4`; verify green |
 | Slice 5 — phone builds, real push | not started; store/TestFlight builds **need founder** (Expo / Apple / Google accounts) | |
 | Live LLM evaluation | blocked: **needs founder** (API key + spend approval) | |
 
@@ -178,3 +178,15 @@ Could not break: NUL and body handling, the confirm → supersede → dismiss �
 - Live demo re-walked on current code: onboarding → connect (122 sources, 49 understood) → Ask answers with evidence → Home shows changes and the dispute card.
 
 **Where the reviews leave things.** Four independent reviews produced 54 ranked findings; 52 are fixed with regression tests and 2 are open by decision (above). Each review found something the previous fixes had missed, mostly in identity authority and in what survives reprocessing. The honest reading is that these two areas are where a fifth review should start once real mail and a real model are in play.
+
+**Merged.** `phase-0` fast-forwarded into `master` at `ca3e753` at the founder's request.
+
+**Slice 4 — accounts, Gmail, Calendar (against a fake Google).** Founder decisions: build now against a stand-in rather than wait for an OAuth client; Google sign-in only. Branch `slice-4`.
+- Built: `PWM_DATA_KEY` AES-256-GCM encryption for refresh tokens and message bodies; Google sign-in through the system browser with PKCE, single-use state, allow-listed redirects and a single-use login code (no token in any URL); sessions (hash only stored), sign-out; bearer-aware identity with the dev user confined to `local`; Gmail connector (history id captured first, newest-first 90-day backfill in pages of 50, one page per job, incremental by history, restart on 404); Calendar connector (sync tokens, 410 fallback, edited events as new immutable sources so a moved meeting is a "change"); bounded retries honouring Retry-After; access-token refresh mid-sync; `needs_reconnect` for a revoked or expired grant; revoke-and-destroy on disconnect and on delete-everything; forged-sender flagging from `Authentication-Results`; app: "Continue with Google", `/auth` return route, secure token storage, sign-out, reconnect, sync status. Decisions D55–D61.
+- `pwm.devtools.fake_google`: OAuth, userinfo, Gmail v1 and Calendar v3 in their documented shapes, serving the synthetic mailbox, with failure injection. Runs in-process for unit tests and as a **separate server** in the functional test. `FAKE_GOOGLE=1 scripts/demo.sh` lets the sign-in be clicked through.
+- Parity: the synthetic mailbox yields identical pipeline results through the Gmail path and directly (tested).
+- Found by the functional test, not by unit tests: Calendar was still hard-coded "not available" after Google was configured; signing in with a Google account whose email matched the development user crashed on a unique constraint (now: a verified email adopts an account never linked to Google, and refuses one linked to a different Google identity).
+- Found by repetition: one store test picked "the first assertion" with no ordering and failed about one run in four when that row happened to be superseded. Fixed with a deterministic pick; the suite then passed seven consecutive runs.
+- **What this does not prove:** that Google behaves as its documentation says. Nothing here has touched Google. The native sign-in path (`expo-web-browser` on a device) has not been run either.
+- Not built, recorded in D57/D58: a retention window that purges stored bodies; propagation of deletions and label changes from Gmail.
+- `scripts/verify.sh`: **ALL GREEN** — 252 backend/eval tests, 8 app tests, 126 functional checks (incl. the full sign-in → sync → ask → disconnect → sign-out journey against a separate fake-Google process); eval gate no regression across 24 scores.

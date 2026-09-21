@@ -12,6 +12,8 @@ dependencies = [
     "alembic>=1.13",
     "psycopg[binary]>=3.2",
     "anthropic>=0.80",
+    "httpx>=0.27",
+    "cryptography>=43",
 ]
 
 [dependency-groups]
@@ -46,6 +48,7 @@ known-first-party = ["pwm", "pwm_eval"]
 "fixtures/*.py" = ["E501"]
 "scripts/*.py" = ["E501"]
 "backend/tests/*.py" = ["E501"]
+"backend/src/pwm/devtools/*.py" = ["E501"]
 "backend/migrations/versions/*.py" = ["E501", "I001"]
 
 [tool.mypy]

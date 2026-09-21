@@ -8,17 +8,23 @@ import {
   deleteEverything,
   disconnect,
   getConnections,
+  getMe,
   getPeople,
   markDifferentPerson,
+  type Me,
   type PersonView,
+  signOut,
 } from '../src/api/client';
 import { Button } from '../src/components/Button';
+import { clearToken } from '../src/session';
+import { signInWithGoogle } from '../src/signIn';
 import { color, space } from '../src/theme';
 
 export default function Settings() {
   const router = useRouter();
   const [state, setState] = useState<ConnectionsView | null>(null);
   const [people, setPeople] = useState<PersonView[]>([]);
+  const [me, setMe] = useState<Me | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -26,6 +32,7 @@ export default function Settings() {
   const load = useCallback(() => {
     getConnections().then(setState, () => setError('Can’t reach your world right now.'));
     getPeople().then(setPeople, () => undefined);
+    getMe().then(setMe, () => undefined);
   }, []);
   useFocusEffect(load);
 
@@ -47,6 +54,17 @@ export default function Settings() {
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
+      {me?.signed_in_with_google && (
+        <View style={styles.card}>
+          <Text style={styles.label}>{me.name ?? me.email}</Text>
+          <Text style={styles.muted}>Signed in with Google as {me.email}</Text>
+          <Button
+            label="Sign out"
+            onPress={() => run(() => signOut().finally(clearToken), true)}
+          />
+        </View>
+      )}
+
       <Text style={styles.section}>Connected</Text>
       {state?.connected.length === 0 && <Text style={styles.muted}>Nothing is connected.</Text>}
       {state?.connected.map((c) => (
@@ -54,7 +72,16 @@ export default function Settings() {
           <Text style={styles.label}>{c.label}</Text>
           <Text style={styles.muted}>
             {c.sources} items read · connected {new Date(c.connected_at).toLocaleDateString()}
+            {c.status === 'syncing' ? ' · still reading older mail' : ''}
           </Text>
+          {c.status === 'needs_reconnect' && (
+            <>
+              <Text style={styles.error}>
+                Google says my access has ended (you removed it, or it expired). Nothing new is being read.
+              </Text>
+              <Button label="Reconnect with Google" kind="primary" onPress={() => run(signInWithGoogle, false)} />
+            </>
+          )}
           {confirming === c.connector ? (
             <View style={styles.row}>
               <Button

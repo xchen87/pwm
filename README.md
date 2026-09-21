@@ -59,7 +59,9 @@ scripts/demo.sh        # database, synthetic mailbox, API, and the app at http:/
 ```
 Walkthrough: `docs/demo-script.md`. Progress log and review history: `docs/PROGRESS.md`.
 
-What this is **not** yet: extraction runs on a rule-based stand-in (no model credentials are configured; the Anthropic adapter is written and unit-tested but has never been run live), the mailbox is synthetic, and there are no accounts, no real Gmail/Calendar connection, and no phone build. No score in `eval/` says anything yet about real-world quality.
+Google sign-in, Gmail and Calendar sync are built and tested against a local stand-in for Google (`FAKE_GOOGLE=1 scripts/demo.sh`); they have never touched Google itself.
+
+What this is **not** yet: extraction runs on a rule-based stand-in (no model credentials are configured; the Anthropic adapter is written and unit-tested but has never been run live), the mailbox is synthetic, and there is no verified connection to real Gmail/Calendar and no phone build. No score in `eval/` says anything yet about real-world quality.
 
 ## Build philosophy
 The moat is not the foundation model. It is the persistent, temporal, user-controlled world model, plus provenance, permissions, trust, and action history.

@@ -121,7 +121,8 @@ def _calendar_event(event: dict[str, Any], owner: Party) -> SourceRecord:
         if a.get("email") and not a.get("self") and a["email"].lower() != owner.address.lower()
     )
     return SourceRecord(
-        id=f"gcal:{_required_id(event)}",
+        # An edited event is a new, immutable source: the id carries its version.
+        id=f"gcal:{_required_id(event)}@{updated}"[:200],
         kind=SourceKind.CALENDAR_EVENT,
         observed_at=_aware(updated),
         sender=owner,

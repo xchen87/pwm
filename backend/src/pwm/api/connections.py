@@ -22,6 +22,8 @@ class ConnectionView(BaseModel):
     label: str
     connected_at: datetime
     last_synced_at: datetime | None
+    # ok | syncing | needs_reconnect | error
+    status: str
     sources: int
 
 
@@ -57,7 +59,13 @@ def connections(session: DbSession, user: CurrentUser) -> ConnectionsView:
     counts: dict[str, int] = {name: total for name, total in per_connector}
     rows = session.scalars(select(Connection).where(Connection.user_id == user.id)).all()
     demo_on = get_settings().environment == "local"
-    waiting = "Needs a verified Google sign-in, which is not set up yet."
+    settings = get_settings()
+    google_on = settings.google_configured
+    waiting = (
+        "Read-only. Sign in with Google to connect."
+        if google_on
+        else "Needs a Google sign-in, which is not set up on this server yet."
+    )
     return ConnectionsView(
         connected=[
             ConnectionView(
@@ -65,16 +73,19 @@ def connections(session: DbSession, user: CurrentUser) -> ConnectionsView:
                 label=c.label,
                 connected_at=c.connected_at,
                 last_synced_at=c.last_synced_at,
+                status=c.status,
                 sources=counts.get(c.connector, 0),
             )  # fmt: skip
             for c in rows
         ],
         available=[
-            Available(connector="gmail", label="Gmail (read-only)", available=False, note=waiting),
+            Available(
+                connector="gmail", label="Gmail (read-only)", available=google_on, note=waiting
+            ),
             Available(
                 connector="google_calendar",
                 label="Google Calendar (read-only)",
-                available=False,
+                available=google_on,
                 note=waiting,
             ),
             Available(
@@ -111,11 +122,15 @@ def disconnect(connector: str, session: DbSession, user: CurrentUser) -> dict[st
 
 @router.delete("/me")
 def delete_everything(session: DbSession, user: CurrentUser) -> dict[str, str]:
-    """Delete the user and, by cascade, everything known about them. The local development
-    identity is then recreated empty so the app can start again from onboarding."""
+    """Delete the user and, by cascade, everything known about them, and withdraw our access
+    at Google. A signed-in account is simply gone; the local development identity starts
+    again empty, because that is all "signing up again" means for it."""
+    service.revoke_google(session, user)
+    was_dev_user = user.google_sub is None
     identity = Party(name=user.name, address=user.email)
     session.execute(delete(User).where(User.id == user.id))
     session.expire_all()
-    ensure_user(session, identity)
+    if was_dev_user:
+        ensure_user(session, identity)
     session.commit()
     return {"status": "deleted"}

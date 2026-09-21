@@ -36,26 +36,29 @@ Residual risk: an injected sentence that is *itself* a literal quote ("Alex prom
 ### T2. Look-alike and spoofed senders
 A message "from" the user or a known contact at a near-identical address (in the fixture: `examp1e-mail`). Control: entity resolution matches on exact address; display names never merge identities on their own (a merge also needs self-identification in the message, is stored as inferred, and can be split); nothing merges into the user; the user's own statements are accepted only through the app. Status: **built** (`pipeline/resolution.py`; tested). The first address seen founds a person and is the only one with authority; every address that joins later is a guess until the user confirms it, and authority is per link (D42, D46, D52): the independent review showed an impersonator could otherwise replace a trusted sender's facts. Remaining residual: a forged From header on the *same* address, to be closed with `Authentication-Results` in Slice 4.
 
+### T2b. Forged From addresses
+A message can claim any From. Control: Gmail's own verdict (`Authentication-Results`) is kept; failing DMARC, or both SPF and DKIM, marks the message suspicious — low confidence, unable to update or dispute anything, flagged on its inspection screen. Mail that merely claims the user's address without sitting in Sent does not make its recipient "known". Status: **built** (D59). Residual: a domain with no DMARC policy.
+
 ### T3. Third-party data
-Correspondents did not consent to being modelled. Controls: store metadata and verified quotes, not mailbox mirrors; do not infer relationship types, health, or other sensitive traits about third parties; deletion removes third-party data with the user's. Status: designed. **Open:** legal review of the privacy notice wording before the beta.
+Correspondents did not consent to being modelled. Controls: message bodies are encrypted at rest under a key outside the database (D57; a retention window that purges them is designed, not built); do not infer relationship types, health, or other sensitive traits about third parties; deletion removes third-party data with the user's. Status: designed. **Open:** legal review of the privacy notice wording before the beta.
 
 ### T4. Model provider as sub-processor
 Source text is sent to an external model API. Controls: provider disclosed to users; only models available under zero data retention and no-training terms may read source text; prompts and responses are not logged with content by us (token counts and versions only). Status: designed. **Open:** confirm provider terms per model before Slice 4 (`docs/decisions.md` D9).
 
 ### T5. OAuth token theft
-Controls: refresh tokens exist only on the server, encrypted at the application level with a key held outside the database; least-privilege read-only scopes; revocation on disconnect; tokens never reach the device or logs. Status: designed (Slice 4).
+Controls: refresh tokens exist only on the server, encrypted with AES-256-GCM under a key held outside the database, with the purpose bound in; read-only scopes; revoked at Google and destroyed on disconnect and on delete-everything; never sent to the device; Google errors carry a status code, never a body. Status: **built**, verified against a stand-in for Google only (D55, D57, D60).
 
 ### T6. Google API policy non-compliance
 `gmail.readonly` is a restricted scope and Gmail-derived data falls under Google's Limited Use requirements: use only for prominent user-facing features, no transfer except to provide those features with user consent, and no human reading of user data without the user's agreement for specific messages (security and legal exceptions aside). Controls: no analytics or debugging workflow may expose message content to staff; support tooling shows metadata and IDs only. Status: designed. Verification status tracked in `docs/decisions.md` D15.
 
 ### T7. Lost or stolen phone
-Controls: session token in the platform secure store (Keychain / Keystore via expo-secure-store); no source content persisted on the device beyond the session; optional biometric lock; server-side session revocation. Status: designed (Slices 4–5).
+Controls: session token in the platform secure store (Keychain / Keystore via expo-secure-store; `sessionStorage` on the web, never `localStorage`); only its hash is stored server-side; sign-out revokes it; no source content persisted on the device. Status: **built**. Biometric lock: Slice 5.
 
 ### T8. Push notification leakage
 Lock screens and notification services see payloads. Control: payloads are a fixed generic string plus a deep link; never names, amounts, dates, or quotes; an empty brief sends nothing. Status: **built** for the in-app inbox stand-in (`brief/service.py`; tested). Real push in Slice 5 implements the same `Notifier` and must reuse the same constant.
 
 ### T9. Embedded-webview OAuth phishing
-Control: OAuth only through the system browser with PKCE and a deep link back (`pwm://`). Google rejects embedded webviews, and they would train users to type Google passwords into our UI. Status: designed (Slice 4).
+Control: OAuth only through the system browser (`expo-web-browser` auth session) with PKCE and a deep link back (`pwm://`); app redirects are allow-listed; `state` is single-use and short-lived; the app receives a single-use code, never a token in a URL. Status: **built**; the native path has not been run on a device.
 
 ### T10. Incomplete deletion
 "Delete my data" must remove sources, assertions, embeddings, brief items, and cached context, and revoke tokens. Controls: every derived row carries `source_id`; cascade is enforced by foreign keys and verified by a test that fails if any row survives. Status: cascade **built and tested** for sources and users (`test_store.py`); token revocation and the user-facing delete flow arrive in Slice 4. Backups: retention period to be set and disclosed — **open**.
@@ -67,7 +70,7 @@ Controls: `golden/` and `.env` are gitignored; fixtures are generated from a scr
 Anything `EXPO_PUBLIC_*` ships to every user. Control: only the API base URL is public; all provider and Google credentials stay on the server. Status: **built** (documented in `docs/env.md`).
 
 ### T13. Cross-user access
-Controls: every row carries `user_id`; handlers receive the user from one dependency and every lookup checks ownership (another user's assertion returns 404 — tested). Status: partly **built**. There is **no authentication yet**: the API serves a single local development user and must not be exposed beyond localhost until Slice 4.
+Controls: every row carries `user_id`; handlers receive the user from one dependency and every lookup checks ownership (another user's assertion returns 404 — tested). Status: **built**. Requests carry a session token; without one, the local development user is served only when `PWM_ENVIRONMENT=local` and dev login is on, and everywhere else the answer is 401 (tested).
 
 ## Explicit non-goals for the MVP
 End-to-end encryption with user-held keys, on-device extraction, and self-hosting. Each would strengthen the posture and each is incompatible with shipping the MVP; revisit after the beta.

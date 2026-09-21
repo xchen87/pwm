@@ -1,7 +1,8 @@
+import { clearToken, getToken } from '../session';
 import type { components } from './schema';
 
 // EXPO_PUBLIC_* variables are inlined at build time. Never put secrets in them.
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
+export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 export type CommitmentItem = components['schemas']['CommitmentItem'];
 export type AssertionDetail = components['schemas']['AssertionDetail'];
@@ -14,15 +15,23 @@ export type AnswerView = components['schemas']['AnswerView'];
 export type ConnectionsView = components['schemas']['ConnectionsView'];
 export type SyncResult = components['schemas']['SyncResult'];
 export type PersonView = components['schemas']['PersonView'];
+export type SessionOut = components['schemas']['SessionOut'];
+export type Me = components['schemas']['Me'];
 export type Health = components['schemas']['Health'];
 export type CommitmentStatus = 'open' | 'done' | 'cancelled';
 
 async function request<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
-  const response = await fetch(`${BASE_URL}${path}`, {
+  const token = await getToken();
+  const response = await fetch(`${API_URL}${path}`, {
     method,
-    headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    headers: {
+      Accept: 'application/json',
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (response.status === 401 && token) await clearToken(); // the session ended; start over signed out
   if (!response.ok) {
     const detail = await response.json().then((json) => json?.detail, () => undefined);
     throw new Error(typeof detail === 'string' ? detail : `${method} ${path} failed with ${response.status}`);
@@ -61,6 +70,10 @@ export const confirmSamePerson = (identifierId: string) =>
   request<unknown>('POST', `/people/identifiers/${identifierId}/confirm`);
 export const markDifferentPerson = (identifierId: string, name: string) =>
   request<unknown>('POST', `/people/identifiers/${identifierId}/split`, { name });
+
+export const exchangeLoginCode = (code: string) => request<SessionOut>('POST', '/auth/session', { code });
+export const getMe = () => request<Me>('GET', '/auth/me');
+export const signOut = () => request<unknown>('POST', '/auth/logout');
 
 export type EventName =
   | 'brief_opened'

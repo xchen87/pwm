@@ -7,6 +7,7 @@ HTTP exactly as the app does. Run by scripts/verify.sh.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shutil
@@ -54,13 +55,18 @@ def recreate_database() -> None:
 
 
 class Api:
-    def __init__(self, base: str) -> None:
+    def __init__(self, base: str, google: str = "") -> None:
         self.base = base
+        self.google = google  # the fake Google this server was pointed at
+        self.token: str | None = None  # when set, requests are made as that signed-in user
 
     def call(self, method: str, path: str, body: Any = None, expect: int = 200) -> Any:
         data = json.dumps(body).encode() if body is not None else None
+        headers = {"Content-Type": "application/json"}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
         request = urllib.request.Request(
-            self.base + path, data=data, method=method, headers={"Content-Type": "application/json"}
+            self.base + path, data=data, method=method, headers=headers
         )
         try:
             with urllib.request.urlopen(request, timeout=20) as response:
@@ -164,14 +170,33 @@ def main() -> None:
     second = run("uv", "run", "python", "-m", "pwm.cli", "demo")
     check("ingested 0 new sources" in second, "loading the same mailbox again ingests nothing")
 
-    port, static_port = free_port(), free_port()
+    port, static_port, google_port = free_port(), free_port(), free_port()
+    google = f"http://127.0.0.1:{google_port}"
+    # Slice 4 runs against a stand-in for Google, as a real separate server.
+    ENV.update(
+        {
+            "PWM_GOOGLE_CLIENT_ID": "functional-client",
+            "PWM_GOOGLE_CLIENT_SECRET": "functional-secret",
+            "PWM_DATA_KEY": base64.b64encode(os.urandom(32)).decode(),
+            "PWM_PUBLIC_URL": f"http://127.0.0.1:{port}",
+            "PWM_GOOGLE_AUTH_URL": f"{google}/o/oauth2/v2/auth",
+            "PWM_GOOGLE_TOKEN_URL": f"{google}/token",
+            "PWM_GOOGLE_REVOKE_URL": f"{google}/revoke",
+            "PWM_GOOGLE_USERINFO_URL": f"{google}/v1/userinfo",
+            "PWM_GOOGLE_API_URL": google,
+        }
+    )
+    fake_google = subprocess.Popen(
+        ["uv", "run", "uvicorn", "pwm.devtools.fake_google:app", "--port", str(google_port), "--log-level", "warning"],
+        cwd=ROOT, env=ENV,
+    )  # fmt: skip
     server_env = {**ENV, "PWM_CORS_ORIGINS": f'["http://127.0.0.1:{static_port}"]'}
     server = subprocess.Popen(
         ["uv", "run", "uvicorn", "pwm.api.main:app", "--port", str(port), "--log-level", "warning"],
         cwd=ROOT, env=server_env,
     )  # fmt: skip
     try:
-        api = Api(f"http://127.0.0.1:{port}")
+        api = Api(f"http://127.0.0.1:{port}", google)
         for _ in range(60):
             try:
                 urllib.request.urlopen(api.base + "/health", timeout=1)
@@ -183,8 +208,9 @@ def main() -> None:
         journeys(api)
         app_in_a_browser(api, static_port)
     finally:
-        server.terminate()
-        server.wait(timeout=10)
+        for process in (server, fake_google):
+            process.terminate()
+            process.wait(timeout=10)
     print(f"functional: {len(CHECKS)} checks passed")
 
 

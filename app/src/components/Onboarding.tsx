@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { connectDemo, type ConnectionsView } from '../api/client';
+import { signInWithGoogle } from '../signIn';
 import { color, space } from '../theme';
 import { Button } from './Button';
 
@@ -25,6 +26,20 @@ export function Onboarding({ connections, onConnected }: Props) {
     }
   };
 
+  const google = async () => {
+    setWorking(true);
+    setError(null);
+    try {
+      if (await signInWithGoogle()) await onConnected();
+    } catch {
+      setError('Google sign-in didn’t complete. Try again.');
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const googleAvailable = connections.available.some((s) => s.connector === 'gmail' && s.available);
+
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -41,7 +56,19 @@ export function Onboarding({ connections, onConnected }: Props) {
           <Text style={styles.promise}>• Disconnect any time and what it brought in is deleted.</Text>
         </View>
 
-        {connections.available.map((source) => (
+        {googleAvailable && (
+          <View style={styles.source}>
+            <Text style={styles.sourceLabel}>Gmail and Google Calendar</Text>
+            <Text style={styles.note}>
+              One Google sign-in, read-only. I start with the last 90 days, newest first, so the first
+              things appear within minutes.
+            </Text>
+            <Button label={working ? 'Opening Google…' : 'Continue with Google'} kind="primary" onPress={google} disabled={working} />
+          </View>
+        )}
+        {connections.available
+          .filter((source) => !(googleAvailable && source.connector !== 'demo'))
+          .map((source) => (
           <View key={source.connector} style={styles.source}>
             <Text style={styles.sourceLabel}>{source.label}</Text>
             <Text style={styles.note}>{source.note}</Text>
@@ -56,7 +83,7 @@ export function Onboarding({ connections, onConnected }: Props) {
               <Text style={styles.soon}>Not available yet</Text>
             )}
           </View>
-        ))}
+          ))}
         {error && <Text style={styles.error}>{error}</Text>}
       </ScrollView>
     </SafeAreaView>

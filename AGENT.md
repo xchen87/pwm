@@ -205,7 +205,7 @@ Add to eval: source-grounding rate and hallucination rate for answers; injection
 
 # Slice 4 — Real accounts and real data
 
-**Status:** the connector protocol, a demo-mailbox connector, connections with disconnect-and-delete, delete-everything, and Gmail/Calendar payload normalization are built and tested. Everything below that touches Google or real identity is **not started and must not be written blind**: it needs a Google OAuth client (founder action, decisions D15) to build against and verify.
+**Status:** built against a stand-in for Google (`pwm.devtools.fake_google`) at the founder's direction, and tested end to end there: sign-in, encrypted tokens, newest-first sync, incremental sync, retries, revocation, disconnect. **Unverified against Google itself** until an OAuth client exists (decisions D55). Not built: a retention window for stored bodies; deletions and label changes from Gmail (D57, D58).
 
 Implement:
 - user authentication (sessions for web, tokens in secure device storage for phones)

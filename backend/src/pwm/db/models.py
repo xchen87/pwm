@@ -36,6 +36,8 @@ class User(Base):
     id: Mapped[UUID] = _id()
     email: Mapped[str] = mapped_column(String(320), unique=True)
     name: Mapped[str | None] = mapped_column(String(200))
+    # Google's stable account id. Email can change; this cannot.
+    google_sub: Mapped[str | None] = mapped_column(String(64), unique=True)
     # "What changed" is measured from the previous visit, not this one.
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     previous_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -273,5 +275,59 @@ class Connection(Base):
     label: Mapped[str] = mapped_column(String(120))
     connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # The newest record seen, so the next sync only asks for what came after it.
-    cursor: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Opaque to everything but the connector: a timestamp, a Gmail history id, a Calendar
+    # sync token, or a backfill page marker.
+    cursor: Mapped[str | None] = mapped_column(Text)
+    # "ok", "syncing", "needs_reconnect" (the grant was revoked or expired), or "error".
+    status: Mapped[str] = mapped_column(String(24), default="ok")
+    # Exception class name only, never provider text.
+    last_error: Mapped[str | None] = mapped_column(String(64))
+
+
+class OAuthToken(Base):
+    """A Google refresh token, encrypted with the application data key. Never leaves the server."""
+
+    __tablename__ = "oauth_tokens"
+    __table_args__ = (UniqueConstraint("user_id", "provider"),)
+
+    id: Mapped[UUID] = _id()
+    user_id: Mapped[UUID] = _user()
+    provider: Mapped[str] = mapped_column(String(32))
+    refresh_token_encrypted: Mapped[str] = mapped_column(Text)
+    scopes: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class OAuthState(Base):
+    """One sign-in attempt in flight: binds Google's callback to the browser that started it."""
+
+    __tablename__ = "oauth_states"
+
+    state: Mapped[str] = mapped_column(String(64), primary_key=True)
+    code_verifier: Mapped[str] = mapped_column(String(128))
+    app_redirect: Mapped[str] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class LoginCode(Base):
+    """A single-use, short-lived code handed to the app after sign-in and exchanged for a
+    session, so the session token itself never appears in a URL."""
+
+    __tablename__ = "login_codes"
+
+    code_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[UUID] = _user()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AuthSession(Base):
+    """A signed-in device. Only the hash of its token is stored."""
+
+    __tablename__ = "sessions"
+
+    id: Mapped[UUID] = _id()
+    user_id: Mapped[UUID] = _user()
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

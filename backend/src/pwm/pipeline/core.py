@@ -4,6 +4,7 @@ Persistence and scheduling live elsewhere so the eval harness can run exactly th
 code that production runs.
 """
 
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -82,6 +83,22 @@ def acceptable(
         outcome.dropped_forbidden_origin += 1
         return False
     return True
+
+
+_AUTH_FAIL = re.compile(
+    r"\bdmarc\s*=\s*fail\b|\bspf\s*=\s*fail\b[^;]*;.*\bdkim\s*=\s*fail\b|\bdkim\s*=\s*fail\b[^;]*;.*\bspf\s*=\s*fail\b",
+    re.I | re.S,
+)
+
+
+def failed_sender_authentication(source: SourceRecord) -> bool:
+    """Whether the receiving mail server (Gmail) recorded that this message failed DMARC, or
+    both SPF and DKIM: the From address is probably forged. Absent results prove nothing
+    either way, so they are not held against a message."""
+    results = next(
+        (v for k, v in source.headers.items() if k.lower() == "authentication-results"), ""
+    )
+    return bool(_AUTH_FAIL.search(results))
 
 
 def _really_sent(source: SourceRecord) -> bool:
@@ -189,6 +206,7 @@ def run_pipeline(
             outcome.suspicious
             or looks_like_injection(source.body)
             or (sender is not None and is_user_lookalike(sender, user))
+            or failed_sender_authentication(source)
         )
         structured = decision is Route.STRUCTURED
         for candidate in candidates:

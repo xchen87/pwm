@@ -28,7 +28,13 @@ def run_next(session: Session, triager: Triager, extractor: Extractor) -> bool:
     caches: list[StageCache] = []
     try:
         with session.begin_nested():
-            process_user(session, user, triager, extractor, caches)
+            if job.kind == "sync":
+                # Imported here: connectors depend on the store, not the other way round.
+                from pwm.connectors.service import build_connector, sync
+
+                sync(session, user, build_connector(session, user, job.key), triager, extractor)
+            else:
+                process_user(session, user, triager, extractor, caches)
         job.status = "done"
     except Exception as error:  # noqa: BLE001 - a failed job must be recorded, whatever the cause
         # The rollback above also discarded the model results and audit rows of calls that
