@@ -16,14 +16,19 @@ A ten-minute walkthrough of the MVP on a laptop, with no API key and no real mai
 
 ## Start
 ```sh
-scripts/demo.sh          # fresh data each time; add --keep to preserve what you confirmed
+scripts/demo.sh            # starts empty, at "Connect your life"
+scripts/demo.sh --loaded   # mailbox already connected, first brief ready
+scripts/demo.sh --keep     # exactly as you left it last time
 ```
-Open http://localhost:8081 and switch the browser to a phone-sized view (dev tools → device toolbar). The same code runs in an Android emulator or Expo Go.
+Open http://localhost:8081 and switch the browser to a phone-sized view (dev tools → device toolbar). The same code runs in an Android emulator or Expo Go (not yet tested there).
 
 ## Walkthrough
 
+**0. Connect your life.** The four promises on the screen are the product's rules, not marketing: read-only, every claim shows its words, a guess stays a guess, disconnect deletes. Gmail and Calendar are shown but unavailable (they need Google's verification). Tap **Connect the demo mailbox**: 122 items are read, most are discarded as noise before any understanding is attempted, and the first brief is ready.
+
 **1. Your World (home).** "Here's what it understood without being told anything."
-- *What changed*: the kitchen quote went from $18,400 to $19,950; the dentist moved the appointment; Mom's dinner moved to Sunday. Each card shows the new words **and** the earlier words it replaced.
+- *Sources disagree*: the calendar says Mom's dinner is Sunday at 6; an earlier email said Saturday. It shows both rather than picking. (Priya's "change of plan" email would settle it, but it came from a second address the user has not confirmed is hers — so it is not allowed to overrule anything. This is the impersonation defence at work.)
+- *Changed*: the kitchen quote went from $18,400 to $19,950; the dentist moved the appointment. Each card shows the new words **and** the earlier words they replaced.
 - Point at "It looks like…": nothing here has been confirmed yet, so nothing is stated as fact.
 
 **2. Open the kitchen-quote card → "Where this came from".**
@@ -56,6 +61,8 @@ Open http://localhost:8081 and switch the browser to a phone-sized view (dev too
 
 **7. The hostile mail (optional, for a technical audience).**
 The mailbox contains ten attacks: "ignore previous instructions", a fake system message, hidden HTML, a forged quoted reply putting words in Alex's mouth, a look-alike of Alex's own address, JSON smuggling, and requests to delete or exfiltrate. None of them produced an item. Run `uv run python -m pwm_eval.run --system heuristic --no-record` and show `injection_clean True`.
+
+**8. Your data.** Home → *Connections and your data*. **Disconnect and delete its data** removes all 122 items and everything understood from them — the home screen empties — while the note you typed stays. **Delete everything** returns to "Connect your life".
 
 ## Known gaps you may be asked about
 - The stand-in misses the decision "Let's keep the CR-V until 2028…" (no "we decided"), Priya's "change of plan" message, and the contradiction between the coach's and the league's registration deadlines. A model-backed extractor is expected to catch these; that is unproven until it is run.
