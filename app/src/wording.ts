@@ -5,9 +5,12 @@ type Worded = Pick<
   'review' | 'origin' | 'commitment_type' | 'direction' | 'committed_by' | 'committed_to' | 'due' | 'overdue'
 >;
 
-/** Only what the user confirmed or said themselves may be presented as fact. */
-export function isFact(item: Pick<CommitmentItem, 'review' | 'origin'>): boolean {
-  return item.review === 'confirmed' || item.origin === 'user_stated';
+/**
+ * Only what the user confirmed may be presented as fact. Even something read out of the
+ * user's own note is an interpretation until they confirm it.
+ */
+export function isFact(item: Pick<CommitmentItem, 'review'>): boolean {
+  return item.review === 'confirmed';
 }
 
 export function heading(item: Worded): string {

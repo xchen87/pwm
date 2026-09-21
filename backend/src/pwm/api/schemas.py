@@ -1,7 +1,8 @@
 from datetime import date, datetime
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import AfterValidator, BaseModel, Field, model_validator
 
 
 class SourceSummary(BaseModel):
@@ -45,18 +46,37 @@ class AssertionDetail(CommitmentItem):
     predicate: str
     extraction_method: str
     recorded_at: datetime
-    # The evidence quote with the surrounding text of the message, for source inspection.
-    context: str
+    # The evidence with the surrounding text of the message, for source inspection.
+    context_before: str
+    context_quote: str
+    context_after: str
     source_suspicious: bool
     related: list[RelatedAssertion]
 
 
+def _clean(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if "\x00" in value:
+        raise ValueError("must not contain NUL characters")
+    return value.strip()
+
+
+Text = Annotated[str | None, AfterValidator(_clean)]
+
+
 class Correction(BaseModel):
-    what: str | None = None
+    what: Annotated[Text, Field(min_length=1, max_length=2000)] = None
     due: date | None = None
     clear_due: bool = False
-    committed_by: str | None = None
-    committed_to: str | None = None
+    committed_by: Annotated[Text, Field(max_length=200)] = None
+    committed_to: Annotated[Text, Field(max_length=200)] = None
+
+    @model_validator(mode="after")
+    def _not_blank(self) -> "Correction":
+        if self.what is not None and not self.what:
+            raise ValueError("what must not be blank")
+        return self
 
 
 class StatusChange(BaseModel):

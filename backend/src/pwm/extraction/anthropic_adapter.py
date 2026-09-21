@@ -10,7 +10,7 @@ from typing import Any
 import anthropic
 from pydantic import ValidationError
 
-from pwm.extraction.candidates import Candidate
+from pwm.extraction.candidates import Candidate, CandidateKind
 from pwm.extraction.interface import (
     ExtractionRequest,
     ExtractionResult,
@@ -25,6 +25,7 @@ from pwm.extraction.prompts import (
     ModelCandidate,
     TriageOutput,
     extraction_prefix,
+    sealed,
     user_message,
 )
 
@@ -59,7 +60,9 @@ def _to_candidate(raw: ModelCandidate, source_id: str) -> Candidate | None:
         fields = raw.model_dump()
         for name in ("valid_from", "valid_to", "due"):
             fields[name] = date.fromisoformat(fields[name][:10]) if fields[name] else None
-        return Candidate(source_id=source_id, **fields)
+        candidate = Candidate(source_id=source_id, **fields)
+        # Memories are created by code from the user's own captures, never by a model.
+        return None if candidate.kind is CandidateKind.MEMORY else candidate
     except (ValidationError, ValueError):
         return None
 
@@ -67,6 +70,7 @@ def _to_candidate(raw: ModelCandidate, source_id: str) -> Candidate | None:
 class AnthropicTriager:
     def __init__(self, client: anthropic.Anthropic, model: str = "claude-haiku-4-5") -> None:
         self._client, self._model = client, model
+        self.version = f"{TRIAGE_PROMPT_VERSION}:{model}"
 
     def is_relevant(self, request: ExtractionRequest) -> TriageResult:
         response = self._client.messages.parse(
@@ -75,13 +79,19 @@ class AnthropicTriager:
             system=[
                 {"type": "text", "text": TRIAGE_SYSTEM, "cache_control": {"type": "ephemeral"}}
             ],
-            messages=[{"role": "user", "content": f"<source>\n{request.visible_text}\n</source>"}],
+            messages=[
+                {"role": "user", "content": f"<source>\n{sealed(request.visible_text)}\n</source>"}
+            ],
             output_format=TriageOutput,
         )
         usage = _usage("triage", self._model, TRIAGE_PROMPT_VERSION, response.usage)
         parsed = response.parsed_output
         # Fail open: a message we could not screen is extracted rather than silently lost.
-        return TriageResult(relevant=parsed.relevant if parsed else True, usage=(usage,))
+        return TriageResult(
+            relevant=parsed.relevant if parsed else True,
+            usage=(usage,),
+            cacheable=parsed is not None,
+        )
 
 
 class AnthropicExtractor:
@@ -111,7 +121,7 @@ class AnthropicExtractor:
         usage = _usage("extraction", self._model, self.prompt_version, response.usage)
         parsed = response.parsed_output
         if response.stop_reason == "refusal" or parsed is None:
-            return ExtractionResult(usage=(usage,), suspicious_content=True)
+            return ExtractionResult(usage=(usage,), suspicious_content=True, cacheable=False)
         candidates = (_to_candidate(raw, request.source.id) for raw in parsed.candidates)
         return ExtractionResult(
             candidates=tuple(c for c in candidates if c is not None),

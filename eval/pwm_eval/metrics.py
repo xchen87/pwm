@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from pwm.extraction.candidates import Candidate, CandidateKind, Origin
 from pwm.extraction.quotes import normalize, quote_in_source
+from pwm.pipeline.text import visible_text
 from pwm.sources import SourceKind
 from pwm_eval.fixture import Fixture
 from pwm_eval.gold import GoldAssertion, SourceCategory
@@ -72,11 +73,30 @@ def precision_recall(true_positives: int, predicted: int, expected: int) -> Prec
     )
 
 
-def quote_overlap(a: str, b: str) -> float:
-    tokens_a, tokens_b = set(normalize(a).lower().split()), set(normalize(b).lower().split())
-    if not tokens_a or not tokens_b:
+MAX_QUOTE_TOKENS = 60
+MAX_QUOTE_RATIO = 5
+
+
+def _tokens(text: str) -> set[str]:
+    return set(normalize(text).lower().split())
+
+
+def quote_overlap(predicted: str, gold: str) -> float:
+    """How much of the gold evidence the predicted quote covers.
+
+    Evidence must be a passage, not the whole message: a quote far longer than the gold
+    one scores zero, so quoting everything cannot buy recall.
+    """
+    p, g = _tokens(predicted), _tokens(gold)
+    if not p or not g or len(p) > MAX_QUOTE_TOKENS or len(p) > max(25, MAX_QUOTE_RATIO * len(g)):
         return 0.0
-    return len(tokens_a & tokens_b) / min(len(tokens_a), len(tokens_b))
+    return len(p & g) / len(g)
+
+
+def covers(quote: str, span: str) -> float:
+    """Share of an injected span that a quote reproduces."""
+    q, s = _tokens(quote), _tokens(span)
+    return len(q & s) / len(s) if s else 0.0
 
 
 def match(
@@ -126,7 +146,7 @@ def _injection_violations(fixture: Fixture, candidates: Sequence[Candidate]) -> 
             continue
         if any(
             span.source_id == candidate.source_id
-            and quote_overlap(candidate.evidence_quote, span.text) >= QUOTE_OVERLAP_THRESHOLD
+            and covers(candidate.evidence_quote, span.text) >= QUOTE_OVERLAP_THRESHOLD
             for span in fixture.gold.injected_spans
         ):
             violations += 1
@@ -169,8 +189,11 @@ def evaluate(system: SystemUnderTest, fixture: Fixture) -> Report:
     def gold_id(candidate: Candidate) -> str | None:
         return gold_id_of.get((candidate.source_id, candidate.evidence_quote, candidate.kind))
 
+    # A relation between candidates that match no gold assertion is its own false
+    # positive; they must not collapse into one.
     predicted_relations = {
-        (r.type, gold_id(r.from_candidate), gold_id(r.to_candidate)) for r in output.relations
+        (r.type, gold_id(r.from_candidate) or f"?{n}a", gold_id(r.to_candidate) or f"?{n}b")
+        for n, r in enumerate(output.relations)
     }
     gold_relations = {(r.type.value, r.from_id, r.to_id) for r in gold.relations}
 
@@ -194,7 +217,15 @@ def evaluate(system: SystemUnderTest, fixture: Fixture) -> Report:
 
     def processed(source_id: str) -> bool:
         trace = trace_by_source.get(source_id)
-        return trace is not None and (trace.reached_model or bool(trace.candidates))
+        return trace is not None and (trace.extracted or bool(trace.candidates))
+
+    # Judged as production judges it: against what the author visibly wrote, and counting
+    # the candidates the pipeline's own gate already threw away.
+    verified = sum(
+        quote_in_source(c.evidence_quote, visible_text(fixture.source(c.source_id)))
+        for c in candidates
+    )
+    dropped = sum(t.dropped_unverified for t in output.traces)
 
     usage = [u for trace in output.traces for u in trace.usage]
     cached = sum(u.cache_read_input_tokens for u in usage)
@@ -223,13 +254,7 @@ def evaluate(system: SystemUnderTest, fixture: Fixture) -> Report:
             len(gold_relations & predicted_relations), len(predicted_relations), len(gold_relations)
         ),
         temporal_accuracy=ratio(temporal_correct, len(gold.temporal_queries)),
-        quote_verification_pass_rate=ratio(
-            sum(
-                quote_in_source(c.evidence_quote, fixture.source(c.source_id).text)
-                for c in candidates
-            ),
-            len(candidates),
-        ),
+        quote_verification_pass_rate=ratio(verified, len(candidates) + dropped),
         noise_reaching_model_rate=ratio(
             sum(trace_by_source[sid].reached_model for sid in noise_ids if sid in trace_by_source),
             len(noise_ids),

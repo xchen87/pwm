@@ -25,14 +25,12 @@ const RELATION: Record<string, string> = {
   superseded_by: 'Replaced by',
 };
 
-function Evidence({ context, quote }: { context: string; quote: string }) {
-  const at = context.indexOf(quote);
-  if (at < 0) return <Text style={styles.context}>{context}</Text>;
+function Evidence({ detail }: { detail: AssertionDetail }) {
   return (
     <Text style={styles.context}>
-      {context.slice(0, at)}
-      <Text style={styles.highlight}>{quote}</Text>
-      {context.slice(at + quote.length)}
+      {detail.context_before}
+      <Text style={styles.highlight}>{detail.context_quote}</Text>
+      {detail.context_after}
     </Text>
   );
 }
@@ -90,7 +88,7 @@ export default function Inspect() {
       )}
 
       <Text style={styles.section}>The evidence</Text>
-      <Evidence context={detail.context} quote={detail.evidence_quote} />
+      <Evidence detail={detail} />
       <Text style={styles.sourceLine}>
         {detail.source.sender_name ?? detail.source.sender_address ?? 'You'}
         {detail.source.sender_name && detail.source.sender_address ? ` <${detail.source.sender_address}>` : ''}

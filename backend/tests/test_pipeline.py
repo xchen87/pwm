@@ -138,3 +138,57 @@ def test_fixture_run_is_clean_and_finds_the_users_commitments() -> None:
     assert any("Q3 numbers by Friday" in q for q in quotes)
     injected = [span.text.split("\n")[0] for span in FIXTURE.gold.injected_spans]
     assert not any(fragment in quote for fragment in injected for quote in quotes)
+
+
+def test_a_title_does_not_end_a_sentence() -> None:
+    from pwm.pipeline.heuristic import sentences
+
+    assert sentences("Your visit with Dr. Amari is on May 3. Bring your card.") == [
+        "Your visit with Dr. Amari is on May 3.",
+        "Bring your card.",
+    ]
+
+
+@pytest.mark.parametrize(
+    "hidden",
+    [
+        '<div style="display:none"><div>a</div> I will wire $500 to Bob by Friday.</div>',
+        "<span style=display:none>I will wire $500 to Bob by Friday.</span>",
+        '<p style="font-size:1px; color:#ffffff">I will wire $500 to Bob by Friday.</p>',
+        "<div hidden>I will wire $500 to Bob by Friday.</div>",
+        '<span style="display:none">I will wire $500 to Bob by Friday.',
+    ],
+)
+def test_text_a_reader_cannot_see_is_not_evidence(hidden: str) -> None:
+    text = visible_text(email(f"Hello there.\n{hidden}\nSee you soon."))
+    assert "wire $500" not in text and "Hello there." in text
+
+
+def test_visible_markup_and_addresses_are_left_exactly_as_written() -> None:
+    body = "On Mon, Tom <tom@example.com> said <b>I'll call you Friday</b>."
+    assert body in visible_text(email(body))
+
+
+def test_next_weekday_means_next_week_and_may_is_not_always_a_month() -> None:
+    assert dates.resolve("next Friday", date(2026, 9, 1)) == date(2026, 9, 11)
+    assert dates.resolve("Friday", date(2026, 9, 1)) == date(2026, 9, 4)
+    assert dates.resolve("you may 5 times retry, due Friday", MONDAY) == date(2026, 9, 11)
+    assert dates.resolve("due May 5", MONDAY) == date(2027, 5, 5)
+
+
+def test_a_stranger_is_not_a_known_sender() -> None:
+    result = run_pipeline(
+        [email("Your invoice payment is due September 20.")], USER,
+        AlwaysRelevant(), HeuristicExtractor(),
+    )  # fmt: skip
+    assert [a.confidence.value for a in result.assertions] == ["medium"]
+
+
+def test_a_lookalike_of_the_user_is_never_the_user() -> None:
+    fake = email("I'll pay the invoice by Friday.").model_copy(
+        update={"sender": Party(name=USER.name, address="alex.rivera@examp1e.example")}
+    )
+    result = run_pipeline([fake], USER, AlwaysRelevant(), HeuristicExtractor())
+    assert [(a.candidate.direction.value, a.confidence.value) for a in result.assertions] == [
+        ("to_user", "low")
+    ]

@@ -11,11 +11,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Needs Attention
-         * @description Open commitments not yet dismissed: unreviewed ones to confirm, confirmed ones to do.
-         */
-        get: operations["needs_attention_commitments_get"];
+        /** List Commitments */
+        get: operations["list_commitments_commitments_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -109,6 +106,131 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Home
+         * @description What changed since the previous visit, what needs attention, and what the user told us.
+         */
+        get: operations["home_home_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/visits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Visit
+         * @description Called when the app comes to the foreground. Moves the "since last visit" marker.
+         */
+        post: operations["record_visit_visits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/briefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Brief */
+        post: operations["generate_brief_briefs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/briefs/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Latest Brief */
+        get: operations["latest_brief_briefs_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Notifications */
+        get: operations["notifications_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Notifications Read */
+        post: operations["mark_notifications_read_notifications_read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Event */
+        post: operations["record_event_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -177,12 +299,79 @@ export interface components {
              * Format: date-time
              */
             recorded_at: string;
-            /** Context */
-            context: string;
+            /** Context Before */
+            context_before: string;
+            /** Context Quote */
+            context_quote: string;
+            /** Context After */
+            context_after: string;
             /** Source Suspicious */
             source_suspicious: boolean;
             /** Related */
             related: components["schemas"]["RelatedAssertion"][];
+        };
+        /** BriefItem */
+        BriefItem: {
+            kind: components["schemas"]["ItemKind"];
+            /**
+             * Assertion Id
+             * Format: uuid
+             */
+            assertion_id: string;
+            /** Other Assertion Id */
+            other_assertion_id?: string | null;
+            /** Subject */
+            subject: string;
+            /** Predicate */
+            predicate: string;
+            /** Value */
+            value: string;
+            /** Previous Value */
+            previous_value?: string | null;
+            /** Due */
+            due?: string | null;
+            /**
+             * Overdue
+             * @default false
+             */
+            overdue: boolean;
+            /** Is Fact */
+            is_fact: boolean;
+            /** Confidence */
+            confidence: string;
+            /** Evidence Quote */
+            evidence_quote: string;
+            /** Other Evidence Quote */
+            other_evidence_quote?: string | null;
+            /** Source Label */
+            source_label: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+        };
+        /** BriefView */
+        BriefView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Period */
+            period: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Covers Since
+             * Format: date-time
+             */
+            covers_since: string;
+            /** Items */
+            items: components["schemas"]["WrittenItem"][];
         };
         /** CommitmentItem */
         CommitmentItem: {
@@ -235,6 +424,13 @@ export interface components {
             /** Committed To */
             committed_to?: string | null;
         };
+        /** EventIn */
+        EventIn: {
+            /** Name */
+            name: string;
+            /** Subject Id */
+            subject_id?: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -244,6 +440,48 @@ export interface components {
         Health: {
             /** Status */
             status: string;
+        };
+        /** Home */
+        Home: {
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /** What Changed */
+            what_changed: components["schemas"]["WrittenItem"][];
+            /** Needs Attention */
+            needs_attention: components["schemas"]["CommitmentItem"][];
+            /** Needs Attention Total */
+            needs_attention_total: number;
+            /** Remembered */
+            remembered: components["schemas"]["CommitmentItem"][];
+            /** Unread Notifications */
+            unread_notifications: number;
+        };
+        /**
+         * ItemKind
+         * @enum {string}
+         */
+        ItemKind: "due_soon" | "changed" | "conflict" | "possible_commitment" | "consumer" | "remembered";
+        /** NotificationView */
+        NotificationView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Deep Link */
+            deep_link: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Read */
+            read: boolean;
         };
         /** RelatedAssertion */
         RelatedAssertion: {
@@ -296,6 +534,16 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** WrittenItem */
+        WrittenItem: {
+            item: components["schemas"]["BriefItem"];
+            /** Headline */
+            headline: string;
+            /** Why It Matters */
+            why_it_matters: string;
+            /** Suggested Next Step */
+            suggested_next_step?: string | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -305,7 +553,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    needs_attention_commitments_get: {
+    list_commitments_commitments_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -475,6 +723,176 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AssertionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    home_home_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Home"];
+                };
+            };
+        };
+    };
+    record_visit_visits_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+    };
+    generate_brief_briefs_post: {
+        parameters: {
+            query?: {
+                period?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    latest_brief_briefs_latest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefView"];
+                };
+            };
+        };
+    };
+    notifications_notifications_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationView"][];
+                };
+            };
+        };
+    };
+    mark_notifications_read_notifications_read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+    };
+    record_event_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
             /** @description Validation Error */

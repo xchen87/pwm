@@ -44,6 +44,7 @@ known-first-party = ["pwm", "pwm_eval"]
 
 [tool.ruff.lint.per-file-ignores]
 "fixtures/*.py" = ["E501"]
+"scripts/*.py" = ["E501"]
 "backend/migrations/versions/*.py" = ["E501", "I001"]
 
 [tool.mypy]

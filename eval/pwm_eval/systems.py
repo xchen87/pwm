@@ -24,6 +24,9 @@ class SourceTrace(BaseModel):
 
     source_id: str
     reached_model: bool = False
+    # Passed triage and was actually extracted from. A message triage threw away was dropped.
+    extracted: bool = False
+    dropped_unverified: int = 0
     candidates: tuple[Candidate, ...] = ()
     usage: tuple[ModelUsage, ...] = ()
 
@@ -94,7 +97,12 @@ class OracleSystem:
                 and self._gold.categories[source.id] is not SourceCategory.NOISE
             )
             traces.append(
-                SourceTrace(source_id=source.id, reached_model=needs_model, candidates=candidates)
+                SourceTrace(
+                    source_id=source.id,
+                    reached_model=needs_model,
+                    extracted=needs_model,
+                    candidates=candidates,
+                )
             )
         people = tuple(
             ResolvedPerson(name=p.name, addresses=p.addresses) for p in self._gold.people

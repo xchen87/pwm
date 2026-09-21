@@ -18,9 +18,10 @@ describe('wording', () => {
     expect(heading({ ...base, commitment_type: 'deadline' })).toBe('Possible deadline');
   });
 
-  it('presents confirmed and user-stated items as fact', () => {
+  it('presents only confirmed items as fact', () => {
     expect(heading({ ...base, review: 'confirmed' })).toBe('Commitment');
-    expect(heading({ ...base, origin: 'user_stated' })).toBe('Commitment');
+    expect(heading({ ...base, origin: 'user_stated' })).toBe('Possible commitment');
+    expect(heading({ ...base, review: 'rejected', origin: 'user_stated' })).toBe('Possible commitment');
   });
 
   it('says who owes whom', () => {

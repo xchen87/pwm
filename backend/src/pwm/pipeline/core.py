@@ -5,6 +5,7 @@ code that production runs.
 """
 
 from collections.abc import Sequence
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -50,6 +51,19 @@ def calendar_candidate(source: SourceRecord) -> Candidate | None:
     )
 
 
+def memory_candidate(source: SourceRecord) -> Candidate:
+    text = source.body.strip()
+    return Candidate(
+        source_id=source.id,
+        kind=CandidateKind.MEMORY,
+        subject="Note",
+        predicate="note",
+        value=text,
+        evidence_quote=text,
+        origin=Origin.USER_STATED,
+    )
+
+
 def acceptable(
     candidate: Candidate, source: SourceRecord, text: str, outcome: SourceOutcome
 ) -> bool:
@@ -64,17 +78,45 @@ def acceptable(
     return True
 
 
+def canonical_addresses(people: Sequence[ResolvedIdentity]) -> dict[str, str]:
+    """Every address of a person maps to one key, so a reply from someone's second address
+    still counts as coming from them."""
+    return {address: person.addresses[0] for person in people for address in person.addresses}
+
+
+def provenance(source: SourceRecord, user: Party, canonical: dict[str, str]) -> dict[str, Any]:
+    def key(party: Party) -> str:
+        address = party.address.lower()
+        return canonical.get(address, address)
+
+    sender = source.sender
+    everyone = (*source.recipients, *([sender] if sender else []))
+    return {
+        "thread_id": source.thread_id,
+        "sender_address": key(sender) if sender else None,
+        "participants": frozenset(key(p) for p in everyone),
+        "from_user": is_from_user(source, user) or source.kind is SourceKind.USER_CAPTURE,
+    }
+
+
 def run_pipeline(
     sources: Sequence[SourceRecord], user: Party, triager: Triager, extractor: Extractor
 ) -> PipelineResult:
     ordered = sorted(sources, key=lambda s: (s.observed_at, s.id))
     people = resolve_people(ordered, user)
-    known_addresses = {address for person in people for address in person.addresses}
+    canonical = canonical_addresses(people)
+    # Someone the user has written to, or shares a calendar event with, as of each message.
+    # Merely having emailed the user does not make a sender known.
+    known_addresses: set[str] = set()
     thread_history: dict[str, list[str]] = {}
     outcomes: list[SourceOutcome] = []
     drafts: list[DraftAssertion] = []
 
     for source in ordered:
+        if source.kind is SourceKind.CALENDAR_EVENT or (
+            source.kind is SourceKind.EMAIL and is_from_user(source, user)
+        ):
+            known_addresses |= {p.address.lower() for p in source.recipients}
         decision = route(source, user)
         outcome = SourceOutcome(source_id=source.id, route=decision)
         outcomes.append(outcome)
@@ -102,6 +144,9 @@ def run_pipeline(
                 outcome.usage += extraction.usage
                 outcome.suspicious = extraction.suspicious_content
                 candidates = extraction.candidates
+        if source.kind is SourceKind.USER_CAPTURE and source.body.strip():
+            # Whatever else is understood from it, what the user asked to remember is kept.
+            candidates += (memory_candidate(source),)
         if source.thread_id and decision is not Route.SKIP:
             thread_history.setdefault(source.thread_id, []).append(text)
 
@@ -115,14 +160,15 @@ def run_pipeline(
         for candidate in candidates:
             if not acceptable(candidate, source, text, outcome):
                 continue
+            by_code = structured or candidate.kind is CandidateKind.MEMORY
+            method = "calendar" if structured else "capture" if by_code else extractor.method
             drafts.append(
                 DraftAssertion(
                     candidate=candidate,
                     observed_at=source.observed_at,
-                    thread_id=source.thread_id,
-                    sender_address=sender.address.lower() if sender else None,
-                    extraction_method="calendar" if structured else extractor.method,
-                    prompt_version="structured-v1" if structured else extractor.prompt_version,
+                    **provenance(source, user, canonical),
+                    extraction_method=method,
+                    prompt_version="structured-v1" if by_code else extractor.prompt_version,
                     confidence=assign_confidence(
                         candidate,
                         sender_known=sender is not None

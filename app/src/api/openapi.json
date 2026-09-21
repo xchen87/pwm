@@ -7,9 +7,8 @@
   "paths": {
     "/commitments": {
       "get": {
-        "summary": "Needs Attention",
-        "description": "Open commitments not yet dismissed: unreviewed ones to confirm, confirmed ones to do.",
-        "operationId": "needs_attention_commitments_get",
+        "summary": "List Commitments",
+        "operationId": "list_commitments_commitments_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -20,7 +19,7 @@
                     "$ref": "#/components/schemas/CommitmentItem"
                   },
                   "type": "array",
-                  "title": "Response Needs Attention Commitments Get"
+                  "title": "Response List Commitments Commitments Get"
                 }
               }
             }
@@ -248,6 +247,192 @@
         }
       }
     },
+    "/home": {
+      "get": {
+        "summary": "Home",
+        "description": "What changed since the previous visit, what needs attention, and what the user told us.",
+        "operationId": "home_home_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Home"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/visits": {
+      "post": {
+        "summary": "Record Visit",
+        "description": "Called when the app comes to the foreground. Moves the \"since last visit\" marker.",
+        "operationId": "record_visit_visits_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Record Visit Visits Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/briefs": {
+      "post": {
+        "summary": "Generate Brief",
+        "operationId": "generate_brief_briefs_post",
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "weekly",
+              "title": "Period"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/briefs/latest": {
+      "get": {
+        "summary": "Latest Brief",
+        "operationId": "latest_brief_briefs_latest_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications": {
+      "get": {
+        "summary": "Notifications",
+        "operationId": "notifications_notifications_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NotificationView"
+                  },
+                  "type": "array",
+                  "title": "Response Notifications Notifications Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/read": {
+      "post": {
+        "summary": "Mark Notifications Read",
+        "operationId": "mark_notifications_read_notifications_read_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Mark Notifications Read Notifications Read Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events": {
+      "post": {
+        "summary": "Record Event",
+        "operationId": "record_event_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Record Event Events Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -395,9 +580,17 @@
             "format": "date-time",
             "title": "Recorded At"
           },
-          "context": {
+          "context_before": {
             "type": "string",
-            "title": "Context"
+            "title": "Context Before"
+          },
+          "context_quote": {
+            "type": "string",
+            "title": "Context Quote"
+          },
+          "context_after": {
+            "type": "string",
+            "title": "Context After"
           },
           "source_suspicious": {
             "type": "boolean",
@@ -433,11 +626,162 @@
           "predicate",
           "extraction_method",
           "recorded_at",
-          "context",
+          "context_before",
+          "context_quote",
+          "context_after",
           "source_suspicious",
           "related"
         ],
         "title": "AssertionDetail"
+      },
+      "BriefItem": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ItemKind"
+          },
+          "assertion_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Assertion Id"
+          },
+          "other_assertion_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Assertion Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "predicate": {
+            "type": "string",
+            "title": "Predicate"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "previous_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Value"
+          },
+          "due": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due"
+          },
+          "overdue": {
+            "type": "boolean",
+            "title": "Overdue",
+            "default": false
+          },
+          "is_fact": {
+            "type": "boolean",
+            "title": "Is Fact"
+          },
+          "confidence": {
+            "type": "string",
+            "title": "Confidence"
+          },
+          "evidence_quote": {
+            "type": "string",
+            "title": "Evidence Quote"
+          },
+          "other_evidence_quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Evidence Quote"
+          },
+          "source_label": {
+            "type": "string",
+            "title": "Source Label"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Observed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "assertion_id",
+          "subject",
+          "predicate",
+          "value",
+          "is_fact",
+          "confidence",
+          "evidence_quote",
+          "source_label",
+          "observed_at"
+        ],
+        "title": "BriefItem"
+      },
+      "BriefView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "covers_since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Covers Since"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WrittenItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "period",
+          "created_at",
+          "covers_since",
+          "items"
+        ],
+        "title": "BriefView"
       },
       "CommitmentItem": {
         "properties": {
@@ -576,6 +920,8 @@
                 "type": "null"
               }
             ],
+            "maxLength": 2000,
+            "minLength": 1,
             "title": "What"
           },
           "due": {
@@ -604,6 +950,7 @@
                 "type": "null"
               }
             ],
+            "maxLength": 200,
             "title": "Committed By"
           },
           "committed_to": {
@@ -615,11 +962,37 @@
                 "type": "null"
               }
             ],
+            "maxLength": 200,
             "title": "Committed To"
           }
         },
         "type": "object",
         "title": "Correction"
+      },
+      "EventIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "EventIn"
       },
       "HTTPValidationError": {
         "properties": {
@@ -646,6 +1019,101 @@
           "status"
         ],
         "title": "Health"
+      },
+      "Home": {
+        "properties": {
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Since"
+          },
+          "what_changed": {
+            "items": {
+              "$ref": "#/components/schemas/WrittenItem"
+            },
+            "type": "array",
+            "title": "What Changed"
+          },
+          "needs_attention": {
+            "items": {
+              "$ref": "#/components/schemas/CommitmentItem"
+            },
+            "type": "array",
+            "title": "Needs Attention"
+          },
+          "needs_attention_total": {
+            "type": "integer",
+            "title": "Needs Attention Total"
+          },
+          "remembered": {
+            "items": {
+              "$ref": "#/components/schemas/CommitmentItem"
+            },
+            "type": "array",
+            "title": "Remembered"
+          },
+          "unread_notifications": {
+            "type": "integer",
+            "title": "Unread Notifications"
+          }
+        },
+        "type": "object",
+        "required": [
+          "since",
+          "what_changed",
+          "needs_attention",
+          "needs_attention_total",
+          "remembered",
+          "unread_notifications"
+        ],
+        "title": "Home"
+      },
+      "ItemKind": {
+        "type": "string",
+        "enum": [
+          "due_soon",
+          "changed",
+          "conflict",
+          "possible_commitment",
+          "consumer",
+          "remembered"
+        ],
+        "title": "ItemKind"
+      },
+      "NotificationView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "deep_link": {
+            "type": "string",
+            "title": "Deep Link"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "read": {
+            "type": "boolean",
+            "title": "Read"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "deep_link",
+          "created_at",
+          "read"
+        ],
+        "title": "NotificationView"
       },
       "RelatedAssertion": {
         "properties": {
@@ -793,6 +1261,39 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WrittenItem": {
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/BriefItem"
+          },
+          "headline": {
+            "type": "string",
+            "title": "Headline"
+          },
+          "why_it_matters": {
+            "type": "string",
+            "title": "Why It Matters"
+          },
+          "suggested_next_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Next Step"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item",
+          "headline",
+          "why_it_matters"
+        ],
+        "title": "WrittenItem"
       }
     }
   }

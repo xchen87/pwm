@@ -34,6 +34,9 @@ class DraftAssertion(BaseModel):
     observed_at: datetime
     thread_id: str | None
     sender_address: str | None
+    # Everyone on the message: only they can update what it said.
+    participants: frozenset[str] = frozenset()
+    from_user: bool = False
     extraction_method: str = ""
     prompt_version: str = ""
     confidence: Confidence = Confidence.MEDIUM
@@ -60,7 +63,18 @@ def assign_confidence(
     return Confidence.MEDIUM if trusted else Confidence.LOW
 
 
-def _same_matter(a: Candidate, b: Candidate) -> bool:
+def _same_matter(a: DraftAssertion, b: DraftAssertion) -> bool:
+    return _same_subject(a.candidate, b.candidate) or (
+        # Within one thread, the same kind of fact is about the same thing even when
+        # the wording of the subject drifts ("your appointment" / "the rescheduled visit").
+        a.candidate.kind is not CandidateKind.COMMITMENT
+        and a.thread_id is not None
+        and a.thread_id == b.thread_id
+        and (a.candidate.kind, a.candidate.predicate) == (b.candidate.kind, b.candidate.predicate)
+    )
+
+
+def _same_subject(a: Candidate, b: Candidate) -> bool:
     if a.kind != b.kind or a.predicate != b.predicate:
         return False
     if a.kind is CandidateKind.COMMITMENT:
@@ -78,9 +92,22 @@ def _same_matter(a: Candidate, b: Candidate) -> bool:
 def _differs(a: Candidate, b: Candidate) -> bool:
     if a.kind is CandidateKind.COMMITMENT:
         return a.due is not None and b.due is not None and a.due != b.due
-    if a.kind is CandidateKind.DECISION:
+    # Decisions and notes are each their own thing: a second note never replaces the first.
+    if a.kind in (CandidateKind.DECISION, CandidateKind.MEMORY):
         return False
     return a.value.strip().lower() != b.value.strip().lower()
+
+
+def _may_update(newer: DraftAssertion, older: DraftAssertion) -> bool:
+    """Only someone who was part of the original exchange can update it: its sender, the
+    user, or, within the same thread, someone the original was addressed to. Joining a
+    thread from outside earns a contradiction at most, never a silent replacement."""
+    if newer.sender_address is None:
+        return False
+    if newer.from_user or newer.sender_address == older.sender_address:
+        return True
+    same_thread = newer.thread_id is not None and newer.thread_id == older.thread_id
+    return same_thread and newer.sender_address in older.participants
 
 
 def reconcile(drafts: list[DraftAssertion]) -> list[DraftRelation]:
@@ -96,16 +123,15 @@ def reconcile(drafts: list[DraftAssertion]) -> list[DraftRelation]:
         newer = drafts[newer_index]
         for older_index in reversed(order[:position]):
             older = drafts[older_index]
-            if older.superseded_by is not None or not _same_matter(
-                newer.candidate, older.candidate
-            ):
+            if older.superseded_by is not None or not _same_matter(newer, older):
                 continue
             if not _differs(newer.candidate, older.candidate):
                 continue
-            same_origin = (newer.thread_id is not None and newer.thread_id == older.thread_id) or (
-                newer.sender_address is not None and newer.sender_address == older.sender_address
-            )
-            if same_origin:
+            if newer.confidence is Confidence.LOW and not newer.from_user:
+                # An untrusted message neither replaces nor disputes what is already known.
+                # It still appears on its own, marked low confidence.
+                continue
+            if _may_update(newer, older):
                 older.superseded_by = newer_index
                 relations.append(
                     DraftRelation(

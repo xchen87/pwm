@@ -1,11 +1,11 @@
-from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import Session, aliased
 
-from pwm import review
+from pwm import clock, review
 from pwm.api.deps import CurrentUser, DbSession
 from pwm.api.schemas import (
     AssertionDetail,
@@ -36,17 +36,31 @@ def _source_summary(assertion: Assertion) -> SourceSummary:
 
 
 def _conflicts(session: Session, ids: list[UUID]) -> set[UUID]:
+    """Assertions with a live disagreement. A conflict ends when the user dismisses or
+    corrects the other side, or a later source replaces it."""
+    one, other = aliased(Assertion), aliased(Assertion)
     rows = session.execute(
-        select(AssertionRelation.from_id, AssertionRelation.to_id).where(
+        select(AssertionRelation.from_id, AssertionRelation.to_id)
+        .join(one, AssertionRelation.from_id == one.id)
+        .join(other, AssertionRelation.to_id == other.id)
+        .where(
             AssertionRelation.type == "contradicts",
             or_(AssertionRelation.from_id.in_(ids), AssertionRelation.to_id.in_(ids)),
+            *(
+                condition
+                for side in (one, other)
+                for condition in (
+                    side.review.in_(("unreviewed", "confirmed")),
+                    side.superseded_by_id.is_(None),
+                )
+            ),
         )
     )
     return {value for row in rows for value in row}
 
 
-def _item(assertion: Assertion, conflicted: set[UUID]) -> CommitmentItem:
-    today = datetime.now(UTC).date()
+def item_for(assertion: Assertion, conflicted: set[UUID]) -> CommitmentItem:
+    today = clock.today()
     return CommitmentItem(
         id=assertion.id, what=assertion.value, commitment_type=assertion.commitment_type,
         direction=assertion.direction, committed_by=assertion.committed_by,
@@ -59,7 +73,11 @@ def _item(assertion: Assertion, conflicted: set[UUID]) -> CommitmentItem:
 
 
 @router.get("/commitments")
-def needs_attention(session: DbSession, user: CurrentUser) -> list[CommitmentItem]:
+def list_commitments(session: DbSession, user: CurrentUser) -> list[CommitmentItem]:
+    return needs_attention(session, user)
+
+
+def needs_attention(session: Session, user: User) -> list[CommitmentItem]:
     """Open commitments not yet dismissed: unreviewed ones to confirm, confirmed ones to do."""
     rows = list(
         session.scalars(
@@ -75,7 +93,7 @@ def needs_attention(session: DbSession, user: CurrentUser) -> list[CommitmentIte
         )
     )
     conflicted = _conflicts(session, [r.id for r in rows])
-    return [_item(row, conflicted) for row in rows]
+    return [item_for(row, conflicted) for row in rows]
 
 
 def _load(session: Session, user: User, assertion_id: UUID) -> Assertion:
@@ -85,7 +103,9 @@ def _load(session: Session, user: User, assertion_id: UUID) -> Assertion:
     return assertion
 
 
-def _context(assertion: Assertion) -> str:
+def _context(assertion: Assertion) -> tuple[str, str, str]:
+    """The evidence in its surroundings, as (before, quote, after), all normalized the same
+    way so the app can highlight the quote without guessing at whitespace or quote marks."""
     record = SourceRecord.model_validate(assertion.source.record)
     quote = normalize(assertion.evidence_quote)
     text = normalize(visible_body(record))
@@ -93,9 +113,11 @@ def _context(assertion: Assertion) -> str:
         text = normalize(visible_text(record))
     at = text.find(quote)
     if at < 0:
-        return quote
+        return "", quote, ""
     start, end = max(0, at - CONTEXT_CHARS), min(len(text), at + len(quote) + CONTEXT_CHARS)
-    return ("… " if start else "") + text[start:end] + (" …" if end < len(text) else "")
+    before = ("… " if start else "") + text[start:at]
+    after = text[at + len(quote) : end] + (" …" if end < len(text) else "")
+    return before, quote, after
 
 
 def _detail(session: Session, assertion: Assertion) -> AssertionDetail:
@@ -108,6 +130,10 @@ def _detail(session: Session, assertion: Assertion) -> AssertionDetail:
     for relation in relations:
         outgoing = relation.from_id == assertion.id
         other = session.get_one(Assertion, relation.to_id if outgoing else relation.from_id)
+        if relation.type == "contradicts" and (
+            other.review not in ("unreviewed", "confirmed") or other.superseded_by_id is not None
+        ):
+            continue  # that disagreement has been settled
         label = relation.type if outgoing or relation.type == "contradicts" else "superseded_by"
         related.append(
             RelatedAssertion(
@@ -119,13 +145,13 @@ def _detail(session: Session, assertion: Assertion) -> AssertionDetail:
                 source=_source_summary(other),
             )  # fmt: skip
         )
-    item = _item(
-        assertion, {assertion.id} if any(r.relation == "contradicts" for r in related) else set()
-    )
+    before, quote, after = _context(assertion)
+    item = item_for(assertion, _conflicts(session, [assertion.id]))
     return AssertionDetail(
         **item.model_dump(), kind=assertion.kind, subject=assertion.subject,
         predicate=assertion.predicate, extraction_method=assertion.extraction_method,
-        recorded_at=assertion.recorded_at, context=_context(assertion),
+        recorded_at=assertion.recorded_at, context_before=before, context_quote=quote,
+        context_after=after,
         source_suspicious=assertion.source.suspicious, related=related,
     )  # fmt: skip
 
@@ -142,6 +168,9 @@ def _apply(session: Session, action: object) -> AssertionDetail:
         raise HTTPException(404, "not found") from None
     except review.ReviewError as problem:
         raise HTTPException(409, str(problem)) from None
+    except DBAPIError:
+        session.rollback()
+        raise HTTPException(422, "that value cannot be stored") from None
     session.commit()
     return _detail(session, assertion)
 

@@ -80,12 +80,21 @@ def extraction_prefix() -> str:
     return f"{system}\n\n## Output schema\n\n{schema}\n\n## Examples\n\n{rendered}"
 
 
+_DELIMITERS = re.compile(r"<(/?\s*(?:source|earlier_message_in_thread|example)\b)", re.I)
+
+
+def sealed(untrusted: str) -> str:
+    """Stop untrusted text from closing or opening our delimiter tags. Only those tags are
+    touched, so evidence quotes still match the source everywhere else."""
+    return _DELIMITERS.sub(r"&lt;\1", untrusted)
+
+
 def user_message(request: ExtractionRequest) -> str:
     source, user = request.source, request.user
     sender = f"{source.sender.name or ''} <{source.sender.address}>" if source.sender else "unknown"
     recipients = ", ".join(f"{p.name or ''} <{p.address}>".strip() for p in source.recipients)
     context = "".join(
-        f"<earlier_message_in_thread>\n{text}\n</earlier_message_in_thread>\n"
+        f"<earlier_message_in_thread>\n{sealed(text)}\n</earlier_message_in_thread>\n"
         for text in request.context[-3:]
     )
     return (
@@ -94,5 +103,6 @@ def user_message(request: ExtractionRequest) -> str:
         f"Kind: {source.kind.value}\n"
         f"{context}"
         "Extract candidates from the source below only. Earlier messages are background.\n"
-        f"<source>\nFrom: {sender.strip()}\nTo: {recipients}\n{request.visible_text}\n</source>"
+        f"<source>\nFrom: {sealed(sender.strip())}\nTo: {sealed(recipients)}\n"
+        f"{sealed(request.visible_text)}\n</source>"
     )

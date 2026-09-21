@@ -36,6 +36,9 @@ class User(Base):
     id: Mapped[UUID] = _id()
     email: Mapped[str] = mapped_column(String(320), unique=True)
     name: Mapped[str | None] = mapped_column(String(200))
+    # "What changed" is measured from the previous visit, not this one.
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    previous_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _now()
 
 
@@ -91,8 +94,10 @@ class Assertion(Base):
     __tablename__ = "assertions"
     __table_args__ = (
         Index("ix_assertions_user_kind_review", "user_id", "kind", "review"),
+        # Identity is where the fact was found, not which extractor found it: a new model or
+        # prompt version must meet the user's earlier decision, not create a fresh copy.
         UniqueConstraint(
-            "source_id", "kind", "evidence_quote", "extraction_method", "prompt_version"
+            "source_id", "kind", "quote_hash", "ordinal", name="uq_assertions_identity"
         ),
     )
 
@@ -106,6 +111,9 @@ class Assertion(Base):
     predicate: Mapped[str] = mapped_column(String(64))
     value: Mapped[str] = mapped_column(Text)
     evidence_quote: Mapped[str] = mapped_column(Text)
+    quote_hash: Mapped[str] = mapped_column(String(64))
+    # Distinguishes several facts supported by the same sentence.
+    ordinal: Mapped[int] = mapped_column(default=0)
     extraction_method: Mapped[str] = mapped_column(String(64))
     prompt_version: Mapped[str] = mapped_column(String(64))
 
@@ -140,6 +148,8 @@ class AssertionRelation(Base):
     type: Mapped[str] = mapped_column(String(16))
     from_id: Mapped[UUID] = mapped_column(ForeignKey("assertions.id", ondelete="CASCADE"))
     to_id: Mapped[UUID] = mapped_column(ForeignKey("assertions.id", ondelete="CASCADE"))
+    # "pipeline" relations are rebuilt on every run; "user" relations (corrections) are kept.
+    made_by: Mapped[str] = mapped_column(String(16), default="pipeline")
 
 
 class ReviewEvent(Base):
@@ -193,10 +203,10 @@ class StageResult(Base):
 
 
 class Job(Base):
-    """Work queue, claimed with FOR UPDATE SKIP LOCKED. `key` makes enqueueing idempotent."""
+    """Work queue, claimed with FOR UPDATE SKIP LOCKED. At most one pending job per user is
+    enqueued; processing itself is idempotent and serialized per user."""
 
     __tablename__ = "jobs"
-    __table_args__ = (UniqueConstraint("kind", "key"),)
 
     id: Mapped[UUID] = _id()
     user_id: Mapped[UUID] = _user()
@@ -207,3 +217,43 @@ class Job(Base):
     run_after: Mapped[datetime] = _now()
     last_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _now()
+
+
+class Brief(Base):
+    """A generated World Brief. Items reference assertions by id; deleting the user removes it."""
+
+    __tablename__ = "briefs"
+
+    id: Mapped[UUID] = _id()
+    user_id: Mapped[UUID] = _user()
+    period: Mapped[str] = mapped_column(String(16))
+    covers_since: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    writer_version: Mapped[str] = mapped_column(String(64))
+    items: Mapped[list[Any]]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class Notification(Base):
+    """In-app inbox and the record of what was pushed. Bodies are generic by rule (threat T8)."""
+
+    __tablename__ = "notifications"
+
+    id: Mapped[UUID] = _id()
+    user_id: Mapped[UUID] = _user()
+    title: Mapped[str] = mapped_column(String(120))
+    deep_link: Mapped[str] = mapped_column(String(200))
+    channel: Mapped[str] = mapped_column(String(16))
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ProductEvent(Base):
+    """Usage measurement (opened, useful, dismissed...). Names and ids only: never content."""
+
+    __tablename__ = "product_events"
+
+    id: Mapped[UUID] = _id()
+    user_id: Mapped[UUID] = _user()
+    name: Mapped[str] = mapped_column(String(48), index=True)
+    subject_id: Mapped[UUID | None] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

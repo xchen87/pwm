@@ -2,13 +2,12 @@
 
 from datetime import UTC, datetime, timedelta
 
-from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pwm.db.models import Job, User
 from pwm.extraction.interface import Extractor, Triager
-from pwm.pipeline.store import process_user
+from pwm.pipeline.store import process_user, stage_cache_for
 
 MAX_ATTEMPTS = 5
 
@@ -25,14 +24,19 @@ def run_next(session: Session, triager: Triager, extractor: Extractor) -> bool:
     if job is None:
         return False
     job.attempts += 1
+    user = session.get_one(User, job.user_id)
+    cache = stage_cache_for(session, user)
     try:
         with session.begin_nested():
-            process_user(session, session.get_one(User, job.user_id), triager, extractor)
+            process_user(session, user, triager, extractor, cache)
         job.status = "done"
     except Exception as error:  # noqa: BLE001 - a failed job must be recorded, whatever the cause
-        # Validation errors echo their input, which may be message content: keep the type only.
-        detail = "" if isinstance(error, ValidationError) else f": {error}"[:300]
-        job.last_error = f"{type(error).__name__}{detail}"
+        # The rollback above also discarded the model results and audit rows of calls that
+        # really happened. Put them back so a retry does not pay for them again.
+        cache.replay()
+        # Exception text routinely echoes its input (constraint violations quote the row,
+        # validation errors quote the value), and the input here is someone's mail.
+        job.last_error = type(error).__name__
         job.status = "failed" if job.attempts >= MAX_ATTEMPTS else "pending"
         job.run_after = datetime.now(UTC) + timedelta(seconds=30 * 2**job.attempts)
     session.commit()

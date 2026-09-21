@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,6 +10,8 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://pwm:pwm@localhost:5433/pwm"
     environment: str = "local"
+    # Pins the clock for demos of the synthetic mailbox, e.g. 2026-09-12T09:00:00Z.
+    fixed_now: datetime | None = None
     # Local development identity; matches the synthetic fixture. Replaced by real auth in Slice 4.
     dev_user_email: str = "alex.rivera@example.com"
     dev_user_name: str = "Alex Rivera"

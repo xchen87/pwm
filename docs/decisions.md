@@ -131,3 +131,26 @@ Expo's typed routes rely on a generated, gitignored file that only the dev serve
 
 ### D29. Mock connector stores message bodies
 `sources.record` holds the full normalized record, including the body, because the fixture has nowhere to re-fetch from. D9's posture (quotes stored, bodies re-fetched) is implemented with the real Gmail connector in Slice 4; the column is documented as temporary.
+
+## 2026-09-21 — Slice 1 review outcomes and Slice 2
+
+### D30. The pipeline never writes `review` — no exceptions (supersedes part of D25)
+D25 let the user's captured notes arrive `confirmed`. The independent review called this a breach of priority 3, correctly: the *note* is the user's, but a due date or party read out of it is an interpretation. Now every capture is stored verbatim as a `memory` assertion created by code, everything interpreted from it is `unreviewed`, and "fact" in the app and the brief means `review = confirmed` (or the verbatim memory itself).
+
+### D31. Assertion identity is where a fact was found, not who found it
+Key: (source, kind, hash of the normalized quote, ordinal). Swapping extractor, model, or prompt version meets the user's earlier decisions instead of duplicating them; a rephrased quote for something already dismissed or corrected is skipped; unreviewed guesses a run no longer produces are deleted; anything the user touched is kept. Pipeline relations are rebuilt each run; user-made ones (`made_by = user`) persist.
+
+### D32. Who may update a fact (tightens D23)
+Its original sender, the user, or — in the same thread — someone the original message was addressed to, with all of a person's addresses treated as one. Anyone else produces a contradiction at most. A LOW-confidence message produces no relation. **Residual:** sender spoofing; to be closed with Gmail's authentication results in Slice 4.
+
+### D33. "Known sender" means reciprocity (tightens D24)
+The user has written to them, or they share a calendar event, as of the message in question. Having emailed the user proves nothing.
+
+### D34. Brief items are chosen by code; writers only word them
+`brief/items.py` selects, ranks, de-duplicates, and caps (at most four unreviewed guesses per brief; no low-confidence guesses). A writer receives items and returns wording per item; it cannot add or drop facts, and each item keeps its assertion id. The template writer needs no model; a model writer will sit behind the same protocol. Notifications are a fixed generic string plus a deep link, and an empty brief sends none.
+
+### D35. Demo clock
+`PWM_FIXED_NOW` pins time so the September-2026 synthetic mailbox demos sensibly on any date. All time-dependent code goes through `pwm.clock`.
+
+### D36. Eval baseline is committed and gated
+`eval/baselines/heuristic.json` + `pwm_eval.check`. A score may only get worse through a visible edit to that file with the reason logged in `docs/PROGRESS.md`. First deliberate change: `signal_emails_dropped_rate` 0.00 → 0.13 when the metric learned to see triage drops.

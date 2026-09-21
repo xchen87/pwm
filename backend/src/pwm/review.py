@@ -4,12 +4,13 @@ This module is the only code that writes `Assertion.review`, and it is reachable
 from authenticated API calls made by the user. Every action leaves a ReviewEvent.
 """
 
-from datetime import UTC, date, datetime
+from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from pwm import clock
 from pwm.db.models import (
     Assertion,
     AssertionRelation,
@@ -64,16 +65,26 @@ def correct(
     original = _owned(session, user, assertion_id)
     if original.superseded_by_id is not None:
         raise ReviewError("this has already been replaced")
+    # Same evidence, so the same identity key: the correction takes the next free slot.
+    taken = session.scalar(
+        select(func.max(Assertion.ordinal)).where(
+            Assertion.source_id == original.source_id,
+            Assertion.kind == original.kind,
+            Assertion.quote_hash == original.quote_hash,
+        )
+    )
     corrected = Assertion(
         user_id=user.id, source_id=original.source_id, kind=original.kind,
         subject=original.subject, predicate=original.predicate,
         value=value if value is not None else original.value,
         # Provenance is retained: the correction still points at the evidence that prompted it.
         evidence_quote=original.evidence_quote,
+        quote_hash=original.quote_hash,
+        ordinal=(taken or 0) + 1000,
         extraction_method="user_correction", prompt_version=f"of:{original.id}",
         origin="user_stated", review="confirmed", confidence="high",
         valid_from=original.valid_from, valid_to=original.valid_to,
-        observed_at=datetime.now(UTC),
+        observed_at=clock.now(),
         commitment_type=original.commitment_type, direction=original.direction,
         committed_by=committed_by if committed_by is not None else original.committed_by,
         committed_to=committed_to if committed_to is not None else original.committed_to,
@@ -86,7 +97,11 @@ def correct(
     original.superseded_by_id = corrected.id
     session.add(
         AssertionRelation(
-            user_id=user.id, type="supersedes", from_id=corrected.id, to_id=original.id
+            user_id=user.id,
+            type="supersedes",
+            from_id=corrected.id,
+            to_id=original.id,
+            made_by="user",
         )
     )
     _log(session, user, original, "correct", replaced_by=str(corrected.id))

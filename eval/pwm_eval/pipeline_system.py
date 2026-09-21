@@ -28,6 +28,8 @@ class PipelineSystem:
                 SourceTrace(
                     source_id=o.source_id,
                     reached_model=o.reached_model,
+                    extracted=o.reached_model and o.relevant is not False,
+                    dropped_unverified=o.dropped_unverified + o.dropped_forbidden_origin,
                     candidates=tuple(kept[o.source_id]),
                     usage=o.usage,
                 )

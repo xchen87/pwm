@@ -48,6 +48,7 @@ class TriageResult(BaseModel):
 
     relevant: bool
     usage: tuple[ModelUsage, ...] = ()
+    cacheable: bool = True
 
 
 class ExtractionResult(BaseModel):
@@ -56,9 +57,15 @@ class ExtractionResult(BaseModel):
     candidates: tuple[Candidate, ...] = ()
     usage: tuple[ModelUsage, ...] = ()
     suspicious_content: bool = False
+    # False for transient failures (refusal, truncated or unparseable output): storing
+    # those would silently drop the message until the prompt version changes.
+    cacheable: bool = True
 
 
 class Triager(Protocol):
+    # Identifies the implementation and model; cached answers are never shared across versions.
+    version: str
+
     def is_relevant(self, request: ExtractionRequest) -> TriageResult: ...
 
 

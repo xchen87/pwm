@@ -7,6 +7,7 @@ beat, not the product: they only see first-person promises, dated deadlines, exp
 """
 
 import re
+from datetime import date
 
 from pwm.extraction.candidates import Candidate, CandidateKind, CommitmentType, Direction, Origin
 from pwm.extraction.interface import ExtractionRequest, ExtractionResult, TriageResult
@@ -18,7 +19,8 @@ from pwm.sources import SourceKind
 
 _CUES = re.compile(
     r"\b(I['’]ll|I will|will do|we['’]ve decided|I['’]ve decided|we decided|due|deadline|closes|"
-    r"let me know by|rescheduled|new number|renews?|price|return)\b",
+    r"let me know by|rescheduled|new number|renews?|price|return|appointment|booked|quote|"
+    r"dinner|total is)\b",
     re.I,
 )
 _PROMISE = re.compile(r"\b(I['’]ll|I will|I['’]m going to|will do)\b", re.I)
@@ -34,8 +36,17 @@ _USER_DEADLINE = re.compile(
 )
 _DECISION = re.compile(r"\b(we|I)(['’]ve| have)? decided\b", re.I)
 _NEW_PHONE = re.compile(r"\bnew (?:number|phone)(?: number)? is ([\d][\d\-. ]{5,}\d)", re.I)
+_MONEY = r"\$([\d,]+(?:\.\d{2})?)"
+_PRICE_CHANGE = re.compile(rf"from\s+{_MONEY}\s+to\s+{_MONEY}(\s+(?:per|a)\s+month|/month)?", re.I)
+_PREMIUM = re.compile(rf"premium is {_MONEY}", re.I)
+_QUOTED_PRICE = re.compile(rf"\b(?:our quote is|revised total is|the total is) {_MONEY}", re.I)
+_RETURN_WINDOW = re.compile(r"\breturn (?:this item|it|the item)?\s*until\b", re.I)
+_EVENT_WORDS = re.compile(r"\b(appointment|rescheduled|booked|dinner|reservation)\b", re.I)
+_CLOCK = re.compile(r"\bat (\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", re.I)
+_TOPIC_PREFIX = re.compile(r"^\s*((re|fwd?)\s*:\s*)+", re.I)
 _STRUCTURED_DATA = re.compile(r"[{\[]\s*\"|\":\s")
-_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+# A full stop after a title ("Dr. Amari") does not end a sentence.
+_SENTENCE_END = re.compile(r"(?<!\bDr\.)(?<!\bMr\.)(?<!\bMs\.)(?<!\bMrs\.)(?<!\bSt\.)(?<=[.!?])\s+")
 
 
 def sentences(text: str) -> list[str]:
@@ -48,7 +59,24 @@ def sentences(text: str) -> list[str]:
     return found
 
 
+def _number(text: str) -> str:
+    value = text.replace(",", "")
+    return value[:-3] if value.endswith(".00") else value
+
+
+def _moment(sentence: str, written_on: date) -> str | None:
+    day = dates.resolve(sentence, written_on)
+    if day is None:
+        return None
+    if clock := _CLOCK.search(sentence):
+        hour = int(clock[1]) % 12 + (12 if clock[3].lower() == "pm" else 0)
+        return f"{day.isoformat()}T{hour:02d}:{int(clock[2] or 0):02d}"
+    return day.isoformat()
+
+
 class HeuristicTriager:
+    version = "heuristic-triage-v1"
+
     def is_relevant(self, request: ExtractionRequest) -> TriageResult:
         return TriageResult(relevant=bool(_CUES.search(request.visible_text)))
 
@@ -71,7 +99,10 @@ class HeuristicExtractor:
         found: list[Candidate] = []
 
         def commitment(quote: str, kind: CommitmentType, by: str, to: str | None) -> None:
-            direction = Direction.BY_USER if by == user_name else Direction.TO_USER
+            # A deadline is the user's to meet whoever announced it. A promise belongs to
+            # whoever made it, judged by address: a display name proves nothing.
+            mine = kind is CommitmentType.DEADLINE or by_user or from_capture
+            direction = Direction.BY_USER if mine else Direction.TO_USER
             found.append(
                 Candidate(
                     source_id=source.id,
@@ -113,6 +144,7 @@ class HeuristicExtractor:
             elif _PROMISE.search(sentence) and not _HYPOTHETICAL.search(sentence):
                 to = (others[0] if others else None) if by_user else user_name
                 commitment(sentence, CommitmentType.PROMISE, author, to)
+            found.extend(self._facts(sentence, request, origin))
             if phone := _NEW_PHONE.search(sentence):
                 found.append(
                     Candidate(
@@ -128,3 +160,43 @@ class HeuristicExtractor:
         return ExtractionResult(
             candidates=tuple(found), suspicious_content=looks_like_injection(request.visible_text)
         )
+
+    def _facts(self, sentence: str, request: ExtractionRequest, origin: Origin) -> list[Candidate]:
+        """Dated and priced facts. The subject is the thread's topic: crude, but stable within
+        a thread, which is what lets a later message supersede an earlier one."""
+        source = request.source
+        written_on = source.observed_at.date()
+        topic = _TOPIC_PREFIX.sub("", source.subject).strip() or "Note"
+        effective = dates.resolve(sentence, written_on) or dates.resolve(
+            request.visible_text, written_on
+        )
+
+        def fact(
+            kind: CandidateKind, predicate: str, value: str, **extra: date | None
+        ) -> Candidate:
+            return Candidate(
+                source_id=source.id, kind=kind, subject=topic, predicate=predicate, value=value,
+                evidence_quote=sentence, origin=origin, **extra,
+            )  # fmt: skip
+
+        facts: list[Candidate] = []
+        if change := _PRICE_CHANGE.search(sentence):
+            predicate = "monthly_rent" if "rent" in sentence.lower() else "monthly_price"
+            facts.append(
+                fact(CandidateKind.THING, predicate, _number(change[2]), valid_from=effective)
+            )
+        elif premium := _PREMIUM.search(sentence):
+            facts.append(
+                fact(
+                    CandidateKind.THING, "annual_premium", _number(premium[1]), valid_from=effective
+                )
+            )
+        elif quoted := _QUOTED_PRICE.search(sentence):
+            facts.append(fact(CandidateKind.THING, "quote", _number(quoted[1])))
+        if _RETURN_WINDOW.search(sentence) and (ends := dates.resolve(sentence, written_on)):
+            facts.append(
+                fact(CandidateKind.THING, "return_window_ends", ends.isoformat(), valid_to=ends)
+            )
+        if _EVENT_WORDS.search(sentence) and (moment := _moment(sentence, written_on)):
+            facts.append(fact(CandidateKind.EVENT, "date", moment))
+        return facts
