@@ -57,3 +57,35 @@ Append-only. Each entry: the decision, why, and what would make us revisit it. I
 
 ### D14. Mobile privacy rules
 Push payloads carry no personal content; OAuth through the system browser with PKCE, never a webview; Google refresh tokens stay server-side; session tokens in secure storage; no source content persisted on device.
+
+## 2026-09-21 — Phase 0
+
+### D15. Google restricted-scope facts, verified (resolves the Task 0.7 VERIFY in D9)
+Checked against Google's documentation on 2026-09-21:
+- **7-day refresh tokens in Testing.** "A Google Cloud Platform project with an OAuth consent screen configured for an external user type and a publishing status of 'Testing' is issued a refresh token expiring in 7 days" — unless only name/email/profile scopes are requested. (developers.google.com/identity/protocols/oauth2)
+- **100 refresh tokens** per Google Account per OAuth client ID; the oldest is invalidated silently beyond that. (same page)
+- **Unverified-app cap:** "100 new users in total, after the app presents the unverified app screen." (support.google.com/cloud/answer/7454865)
+- **Annual security assessment:** "Applications requesting access to restricted scopes must undergo an annual security assessment", using the App Defense Alliance CASA framework, as "the final step of the restricted scopes review process"; "All applications must be revalidated every year." (support.google.com/cloud/answer/13465431)
+- **Limited Use:** use limited to "providing or improving user-facing features that are prominent in the requesting application's user interface"; humans may read user data only with "the user's affirmative agreement to view specific messages" or for security/legal reasons. (developers.google.com/terms/api-services-user-data-policy)
+
+Caveat: these passages were retrieved through an automated page reader, so wording may differ slightly from the live pages; re-read the originals before relying on them in a legal or compliance document. That switching to "In production" status lifts the 7-day expiry is our reading of the first quote, not a separate statement by Google.
+
+**Not found in those pages:** assessment cost, and explicit language on AI/ML training. Treat both as unknown, not as permitted or free. Our own rule (no training on user content) stands regardless.
+
+**Consequences:**
+- A beta in "Testing" status would force every partner to reconnect Gmail weekly. The beta therefore needs the app in "In production" publishing status, which means starting brand + restricted-scope verification well before Slice 6. **Founder action: create the Google Cloud project and begin verification now**; the agent cannot do this.
+- Until verified, total new users are capped at 100, so the 20–50 partner target fits, with little headroom for churned testers.
+- "No human reads mail" is a policy requirement, not only our preference: support and debugging tools must work from IDs and metadata.
+
+### D16. Tooling: uv, root pyproject, Expo SDK 57
+- `uv` manages Python 3.12 and the virtualenv (the dev machine ships Python 3.10). One `pyproject.toml` at the repo root packages both `backend/src/pwm` and `eval/pwm_eval`, so the eval harness imports the same models the API uses.
+- Local Postgres is `pgvector/pgvector:pg16` via `docker-compose.yml` on port 5433.
+- App scaffolded with Expo SDK 57 / React Native 0.86 / TypeScript 6. The template's bundled `.claude/` plugin settings, `AGENTS.md`, and MIT `LICENSE` were removed from `app/` (the licence applied to the template, and keeping it would have implied the app itself is MIT-licensed).
+- `openapi-typescript` requires TypeScript 5 as a peer and the app uses 6, so it is run through `npx` (`npm run gen:api`) rather than installed as a dependency.
+
+### D17. Eval grading is mechanical
+Candidates are matched to gold by source, kind, and evidence-quote overlap (≥ 0.6 of the shorter quote's tokens) — no model grades a model. Precision is reported as n/a, not 1.0, when a system predicts nothing. An oracle system must score 1.00 everywhere and a deliberately gullible system must fail the injection suite; both are tests, so the metrics themselves are under test.
+**Known limit:** quote overlap checks *where* a fact was found, not whether `value` was normalised correctly. Commitment `direction` and `due` are scored separately; value-level scoring for facts arrives with as-of queries in Slice 1–2.
+
+### D18. Commitments have a type
+`promise` (someone said they will do something) and `deadline` (a date by which the user must act: "registration closes", "due by"). AGENT.md's Commitment Radar language covers both and they need different UI wording, so the distinction is in the schema and prompt from the start.

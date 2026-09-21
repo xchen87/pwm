@@ -21,7 +21,7 @@ Extract only what the source supports. For each candidate provide:
 - `evidence_quote`: a short passage copied character-for-character from the source that supports the candidate. Code checks that this quote exists in the source and discards the candidate if it does not. Never paraphrase, repair, or merge quotes.
 - `origin`: `source_explicit` when the source states it outright; `inferred` when you derived it by reasoning from what is stated
 - `valid_from`, `valid_to`: only when the source gives or clearly implies them; otherwise null
-- for commitments: `committed_by`, `committed_to`, `due` (null if not stated), and `direction` (by_user | to_user | between_others)
+- for commitments: `commitment_type` (`promise` when someone says they will do something; `deadline` when the source states a date by which the user must act), `committed_by`, `committed_to`, `due` (null if not stated), and `direction` (by_user | to_user | between_others)
 
 Rules:
 - When evidence is ambiguous, mark the candidate `inferred` and keep it, or leave it out. Do not guess to fill fields.
@@ -33,7 +33,7 @@ Rules:
 
 ## Output schema
 
-Defined in code as Pydantic models (`backend/`, Slice 1) and rendered here deterministically at build time. Placeholder until then.
+Defined in code: `Candidate` in `backend/src/pwm/extraction/candidates.py`. Slice 1 renders its JSON schema here deterministically at build time.
 
 ## Few-shot examples
 

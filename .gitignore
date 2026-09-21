@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.env
+node_modules/
+app/.expo/
+app/dist/
+# Real user data never enters the repo (CLAUDE.md). The founder golden set lives here.
+golden/

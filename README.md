@@ -41,11 +41,18 @@ Built last, and only once design-partner evidence supports them: passive Decisio
 - `CLAUDE.md` — rules, scope, and approved stack for Claude Code
 - `AGENT.md` — the single plan of record: vertical slices and acceptance criteria
 - `TECHNICAL_BRIEF.md` — architecture, data model, trust model, evaluation
-- `docs/decisions.md` — decision log with rationale
+- `docs/` — decision log, architecture map, threat model, environment variables, local development
+- `backend/` — FastAPI service, extraction interfaces, migrations
+- `app/` — Expo app (iOS, Android, web)
+- `eval/` — eval harness, metrics, score history, local golden-set labeller
+- `fixtures/` — synthetic and adversarial fixture (generated; no real data, ever)
 - `prompts/` — versioned prompt prefixes
 - `investor_pitch.pptx` — investor/co-founder pitch (predates the current plan; where it differs, the documents above win)
 
-Created during Phase 0 (not present yet): `backend/`, `app/`, `eval/`, `fixtures/`, and the remaining `docs/` files (architecture, threat model, env vars, local dev).
+Start with `docs/local-dev.md`.
+
+## Status
+Phase 0 is complete: scaffolding, fixture, adversarial set, eval harness with a recorded baseline, and the threat model. Nothing extracts yet — the baseline scores zero recall by design. Next is Slice 1, Commitment Radar.
 
 ## Build philosophy
 The moat is not the foundation model. It is the persistent, temporal, user-controlled world model, plus provenance, permissions, trust, and action history.
