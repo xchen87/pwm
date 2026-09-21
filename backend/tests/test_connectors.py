@@ -125,3 +125,24 @@ def test_calendar_oddities_never_produce_naive_times_or_crashes() -> None:
         [{"id": "ok", "payload": {}, "internalDate": "0"}, {"payload": {}}], gmail_message
     )
     assert (len(records), skipped) == (1, 1)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"id": "a", "payload": {"parts": ["not a dict"]}},
+        {"id": "b", "payload": {"mimeType": "text/plain", "body": "not a dict"}},
+        {"id": None, "payload": {}},
+    ],
+)
+def test_wrongly_shaped_payloads_are_malformed_not_fatal(message: dict) -> None:
+    with pytest.raises(MalformedPayload):
+        gmail_message(message)
+
+
+def test_a_sender_without_a_domain_is_nobody() -> None:
+    record = gmail_message({"id": "x", "internalDate": "1788771120000",
+                            "payload": {"headers": [{"name": "From", "value": "eve"}]}})  # fmt: skip
+    assert record.sender is None
+    with pytest.raises(MalformedPayload):
+        calendar_event({"id": "e", "updated": 12345, "attendees": ["eve"]}, ME)

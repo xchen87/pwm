@@ -301,3 +301,54 @@ def test_a_nonsense_clock_time_is_not_stored_as_a_time() -> None:
     from pwm.pipeline.heuristic import _moment
 
     assert _moment("Your appointment is on September 30 at 99:99 pm", MONDAY) == "2026-09-30"
+
+
+def test_a_newcomer_with_a_grander_name_never_becomes_the_founding_address() -> None:
+    priya = Party(name="Priya Raman", address="priya@work.example")
+    real = email("Rent is confirmed. Priya Raman").model_copy(
+        update={"id": "real", "sender": priya, "observed_at": datetime(2026, 9, 1, tzinfo=UTC)}
+    )
+    sent = email("Thanks Priya!").model_copy(
+        update={"id": "sent", "sender": USER, "recipients": (priya,), "provider_labels": ("SENT",),
+                "observed_at": datetime(2026, 9, 2, tzinfo=UTC)}
+    )  # fmt: skip
+    fake = email("This is Priya K Raman, new address.").model_copy(
+        update={"id": "fake", "sender": Party(name="Priya K Raman", address="priya.raman@evil.example"),
+                "observed_at": datetime(2026, 9, 3, tzinfo=UTC)}
+    )  # fmt: skip
+    person = next(p for p in resolve_people([real, sent, fake], USER) if len(p.addresses) == 2)
+    assert person.addresses[0] == "priya@work.example"
+    assert person.inferred_links == ("priya.raman@evil.example",)
+
+
+@pytest.mark.parametrize(
+    "hidden",
+    [
+        '<div data-x="' + "y" * 2100 + '" style="display:none">INJECTED</div>',
+        '<div class="' + "c " * 1500 + '" hidden>INJECTED</div>',
+        '<p style="display' + " " * 30 + ':none">INJECTED</p>',
+    ],
+)
+def test_padding_a_tag_does_not_smuggle_hidden_text_past_the_check(hidden: str) -> None:
+    assert "INJECTED" not in visible_text(email(f"Hello.\n{hidden}\nBye."))
+
+
+def test_records_are_cleaned_and_bounded_where_they_are_made() -> None:
+    from pydantic import ValidationError
+
+    long_name = Party(name="E" * 250 + " Smith\ud800", address="eve@x.example")
+    assert long_name.name is not None and len(long_name.name) == 200
+    for bad in ("e" * 330 + "@x.example", "eve"):
+        with pytest.raises(ValidationError):
+            Party(name="Eve", address=bad)
+    naive = SourceRecord(
+        id="n", kind=SourceKind.EMAIL, observed_at=datetime(2026, 9, 1), subject="a\ud800b"
+    )
+    assert naive.observed_at.tzinfo is not None and naive.subject == "ab"
+    for when in (datetime(1, 1, 1, tzinfo=UTC), datetime(9999, 1, 1, tzinfo=UTC)):
+        with pytest.raises(ValidationError):
+            SourceRecord(id="x", kind=SourceKind.EMAIL, observed_at=when)
+    with pytest.raises(ValidationError):
+        SourceRecord(
+            id="i" * 250, kind=SourceKind.EMAIL, observed_at=datetime(2026, 9, 1, tzinfo=UTC)
+        )

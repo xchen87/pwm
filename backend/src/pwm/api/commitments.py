@@ -16,7 +16,9 @@ from pwm.api.schemas import (
     StatusChange,
 )
 from pwm.db.models import Assertion, AssertionRelation, User
+from pwm.extraction.factory import build_stages
 from pwm.extraction.quotes import normalize
+from pwm.pipeline.store import process_user
 from pwm.pipeline.text import visible_body, visible_text
 from pwm.sources import SourceRecord
 
@@ -183,7 +185,14 @@ def confirm(assertion_id: UUID, session: DbSession, user: CurrentUser) -> Assert
 
 @router.post("/assertions/{assertion_id}/dismiss")
 def dismiss(assertion_id: UUID, session: DbSession, user: CurrentUser) -> AssertionDetail:
-    return _apply(session, lambda: review.dismiss(session, user, assertion_id))
+    def dismiss_and_reread() -> Assertion:
+        dismissed = review.dismiss(session, user, assertion_id)
+        session.flush()
+        # Re-read the mailbox without it: a later genuine update can now take its place.
+        process_user(session, user, *build_stages())
+        return dismissed
+
+    return _apply(session, dismiss_and_reread)
 
 
 @router.post("/assertions/{assertion_id}/correct")

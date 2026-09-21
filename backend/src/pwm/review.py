@@ -56,6 +56,12 @@ def confirm(session: Session, user: User, assertion_id: UUID) -> Assertion:
 def dismiss(session: Session, user: User, assertion_id: UUID) -> Assertion:
     assertion = _owned(session, user, assertion_id)
     assertion.review = "rejected"
+    # Whatever this had replaced is live again at once, not at the next pipeline run.
+    session.execute(
+        update(Assertion)
+        .where(Assertion.user_id == user.id, Assertion.superseded_by_id == assertion.id)
+        .values(superseded_by_id=None)
+    )
     _log(session, user, assertion, "dismiss")
     return assertion
 
@@ -134,10 +140,17 @@ def merge_people(session: Session, user: User, keep_id: UUID, absorb_id: UUID) -
     keep, absorb = _person(session, user, keep_id), _person(session, user, absorb_id)
     if keep.id == absorb.id:
         raise ReviewError("cannot merge a person with themselves")
+    # The user vouches for the person they merged in, not for every guess attached to it:
+    # guessed addresses move across but stay guesses.
+    session.execute(
+        update(PersonIdentifier)
+        .where(PersonIdentifier.person_id == absorb.id, PersonIdentifier.link != "inferred")
+        .values(person_id=keep.id, link="user")
+    )
     session.execute(
         update(PersonIdentifier)
         .where(PersonIdentifier.person_id == absorb.id)
-        .values(person_id=keep.id, link="user")
+        .values(person_id=keep.id)
     )
     # Reload so deleting the emptied person does not cascade to the moved identifiers.
     session.refresh(absorb)

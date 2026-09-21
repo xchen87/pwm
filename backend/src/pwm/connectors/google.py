@@ -22,8 +22,17 @@ class MalformedPayload(ValueError):
 KEPT_HEADERS = ("List-Unsubscribe", "Precedence", "Auto-Submitted", "Authentication-Results")
 
 
+def _required_id(payload: dict[str, Any]) -> str:
+    identifier = payload["id"]
+    if not isinstance(identifier, str) or not identifier:
+        raise ValueError("missing id")
+    return identifier
+
+
 def _parties(value: str) -> tuple[Party, ...]:
-    return tuple(Party(name=n or None, address=a.lower()) for n, a in getaddresses([value]) if a)
+    return tuple(
+        Party(name=n or None, address=a.lower()) for n, a in getaddresses([value]) if "@" in a
+    )
 
 
 def _plain_text(payload: dict[str, Any]) -> str:
@@ -41,7 +50,16 @@ def _plain_text(payload: dict[str, Any]) -> str:
 def gmail_message(message: dict[str, Any]) -> SourceRecord:
     try:
         return _gmail_message(message)
-    except (KeyError, TypeError, ValueError, OverflowError, OSError, binascii.Error) as problem:
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+        AttributeError,
+        RecursionError,
+        OverflowError,
+        OSError,
+        binascii.Error,
+    ) as problem:
         raise MalformedPayload(type(problem).__name__) from None
 
 
@@ -55,7 +73,7 @@ def _gmail_message(message: dict[str, Any]) -> SourceRecord:
     recipients = _parties(", ".join(filter(None, (headers.get("to"), headers.get("cc")))))
     observed = datetime.fromtimestamp(int(message.get("internalDate", "0")) / 1000, UTC)
     return SourceRecord(
-        id=f"gmail:{message['id']}",
+        id=f"gmail:{_required_id(message)}",
         kind=SourceKind.EMAIL,
         observed_at=observed,
         thread_id=f"gmail:{message.get('threadId', message['id'])}",
@@ -79,7 +97,14 @@ def _moment(value: dict[str, Any] | None) -> datetime | None:
 def calendar_event(event: dict[str, Any], owner: Party) -> SourceRecord:
     try:
         return _calendar_event(event, owner)
-    except (KeyError, TypeError, ValueError, OverflowError) as problem:
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+        AttributeError,
+        RecursionError,
+        OverflowError,
+    ) as problem:
         raise MalformedPayload(type(problem).__name__) from None
 
 
@@ -96,7 +121,7 @@ def _calendar_event(event: dict[str, Any], owner: Party) -> SourceRecord:
         if a.get("email") and not a.get("self") and a["email"].lower() != owner.address.lower()
     )
     return SourceRecord(
-        id=f"gcal:{event['id']}",
+        id=f"gcal:{_required_id(event)}",
         kind=SourceKind.CALENDAR_EVENT,
         observed_at=_aware(updated),
         sender=owner,

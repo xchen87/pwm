@@ -202,3 +202,25 @@ def test_a_corrected_typo_is_stated_not_hidden() -> None:
     assert "I read “apointment” as “appointment”" in (
         TemplateReasoner().answer("q", retrieved).caveat or ""
     )
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Christina promised what?",
+        "what did christina promise me",
+        "Did CHRISTINA send the contract?",
+        "Christina's contract?",
+    ],
+)
+def test_no_capitalisation_lets_a_question_be_corrected_into_someone_elses_name(
+    question: str,
+) -> None:
+    park = fact("1", direction="to_user", committed_by="Christine Park", value="send the contract")
+    assert retrieve(question, [park], TODAY).facts == []
+
+
+def test_a_capitalised_ordinary_word_is_still_corrected() -> None:
+    policy = fact("1", kind="thing", subject="Auto insurance policy", predicate="annual_premium", value="1284",
+                  evidence_quote="Your premium is $1,284", direction=None)  # fmt: skip
+    assert retrieve("What is the Insurence premium?", [policy], TODAY).facts

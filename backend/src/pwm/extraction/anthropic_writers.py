@@ -51,8 +51,21 @@ def _facts_block(payload: list[dict[str, object]]) -> str:
 
 
 _NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
-_CAPITALISED = re.compile(r"(?<![.!?:•\n] )(?<!^)\b[A-Z][a-zA-Z’'-]{2,}\b", re.M)
-_FORBIDDEN = re.compile(r"https?://|www\.|@|\bdefinitely\b|\bcertainly\b|\bguaranteed\b", re.I)
+_MONEY = re.compile(r"\$\s?(\d[\d,]*(?:\.\d+)?)")
+_CLOCK = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s?([AaPp])\.?[Mm]\b")
+_ISO_TIME = re.compile(r"T(\d{2}):(\d{2})")
+_CAPITALISED = re.compile(r"\b[A-Z][a-zA-Z’'-]+\b")
+_FORBIDDEN = re.compile(
+    r"https?://|www\.|@|\b[\w-]+\.(?:com|net|org|io|ly|co|me|info|biz|app|dev|example)\b|"
+    r"\b(definitely|certainly|guaranteed|absolutely|verified|for certain|for sure|without doubt|"
+    r"must|immediately|urgent(ly)?|wire|transfer)\b|"
+    r"\d\s?(k|m|bn|thousand|million|billion)\b|"
+    r"\b(hundred|thousand|million|billion|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b",
+    re.I,
+)
+_NEGATION = re.compile(
+    r"\b(not|never|no longer|isn['’]t|aren['’]t|won['’]t|didn['’]t|doesn['’]t)\b", re.I
+)
 _HEDGED = re.compile(
     r"possibl|looks like|appears|may\b|might|unconfirmed|not confirmed|seems", re.I
 )
@@ -61,7 +74,9 @@ _PLAIN_WORDS = frozenset(
     "Jan Feb Mar Apr Jun Jul Aug Sep Sept Oct Nov Dec Monday Tuesday Wednesday Thursday Friday "
     "Saturday Sunday Mon Tue Tues Wed Thu Thur Thurs Fri Sat Sun You Your Possible Possibly Two "
     "World Brief The This That These Those There Here Open Confirm Dismiss Edit Earlier Before "
-    "After Since Until Due Was Now Not Both Some Nothing Something".split()
+    "After Since Until Due Was Now Not Both Some Nothing Something It Its If In On At By For "
+    "From To And Or But A An Is Are Were Will Has Have Had One Another Other Later Looks "
+    "Appears Seems May Might AM PM I".split()
 )
 
 
@@ -75,21 +90,39 @@ def _numbers(text: str) -> set[str]:
     return found
 
 
-def _allowed_numbers(content: str) -> set[str]:
-    allowed = _numbers(content)
-    # Dates and times are reformatted: 18:00 becomes 6:00 PM, 09 becomes 9.
-    for number in list(allowed):
-        if number.isdigit() and 13 <= int(number) <= 23:
-            allowed.add(str(int(number) - 12))
-    return allowed | {"12"}
+def _clock_times(content: str) -> set[tuple[int, int, str]]:
+    """Times the content allows, as (hour, minute, a|p): taken from ISO values and from
+    clock times written in the evidence."""
+    allowed = set()
+    for hour, minute in _ISO_TIME.findall(content):
+        h = int(hour)
+        allowed.add((h % 12 or 12, int(minute), "p" if h >= 12 else "a"))
+    for hour, minute, meridiem in _CLOCK.findall(content):
+        allowed.add((int(hour), int(minute or 0), meridiem.lower()))
+    return allowed
 
 
 def grounded(text: str, content: str) -> bool:
-    """Whether wording stays inside what it was given: no links or addresses, no numbers
-    and no names that are not in the content, no words that assert certainty."""
+    """Whether wording stays inside what it was given.
+
+    Rejects links and addresses, certainty and urgency, number words and magnitudes, any
+    figure, amount, clock time or capitalised word that is not in the content, and a
+    negation the content does not contain. It cannot catch everything (a lower-case name,
+    or true words recombined into a false sentence): it is one layer, behind code-side
+    selection and in front of a source link on every item, and failing it costs nothing
+    because the template wording is always available.
+    """
     if _FORBIDDEN.search(text):
         return False
-    if not _numbers(text) <= _allowed_numbers(content):
+    if _NEGATION.search(text) and not _NEGATION.search(content):
+        return False
+    if not _numbers(text) <= _numbers(content) | {str(h) for h, _, _ in _clock_times(content)}:
+        return False
+    money_in_content = {m.replace(",", "") for m in _MONEY.findall(content)}
+    if not {m.replace(",", "") for m in _MONEY.findall(text)} <= money_in_content:
+        return False
+    written = {(int(h), int(m or 0), p.lower()) for h, m, p in _CLOCK.findall(text)}
+    if not written <= _clock_times(content):
         return False
     known = set(re.findall(r"[A-Za-z’'-]+", content)) | _PLAIN_WORDS
     return all(word in known for word in _CAPITALISED.findall(text))

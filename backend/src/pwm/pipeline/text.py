@@ -7,9 +7,10 @@ from pwm.sources import SourceKind, SourceRecord
 _REPLY_HEADER = re.compile(r"^On .{5,200} wrote:\s*$")
 _FORWARD_MARKER = re.compile(r"^-{2,}\s*(Original|Forwarded) [Mm]essage\s*-{2,}")
 # Text a recipient would never see is a classic carrier for injected instructions.
-# A tag cannot contain another "<", and its attributes are bounded: both keep scanning
-# linear on hostile input such as a megabyte of unclosed "<a<a<a".
-_OPEN_TAG = re.compile(r"<([a-zA-Z][\w-]{0,40})\b([^<>]{0,2000})>")
+# A tag cannot contain another "<". That alone keeps scanning linear on hostile input such
+# as a megabyte of unclosed "<a<a<a"; no length limit is needed, and a limit would let a
+# long attribute smuggle a hidden element past the check.
+_OPEN_TAG = re.compile(r"<([a-zA-Z][\w-]*)\b([^<>]*)>")
 _HIDING_STYLE = re.compile(
     r"display\s{0,8}:\s{0,8}none|visibility\s{0,8}:\s{0,8}hidden|opacity\s{0,8}:\s{0,8}0(\.0{1,8})?\s{0,8}(;|$|[\"'])|"
     r"font-size\s{0,8}:\s{0,8}[0-2](\.\d{1,8})?\s{0,8}(px|pt|em|%)?\s{0,8}(;|$|[\"'])|"
@@ -28,13 +29,16 @@ _SUSPICIOUS = re.compile(
 
 
 def _hides(attributes: str) -> bool:
+    # Whitespace is collapsed first, so the patterns stay bounded without being evadable
+    # by padding ("display" followed by twenty spaces).
+    attributes = re.sub(r"\s+", " ", attributes)
     return bool(_HIDING_STYLE.search(attributes) or _HIDDEN_ATTRIBUTE.search(attributes))
 
 
 def _end_of_element(body: str, name: str, start: int) -> int:
     """Index just past the tag that closes the element opened before `start`, counting
     nested elements of the same name. An unclosed element hides everything after it."""
-    tag = re.compile(rf"<(/?){re.escape(name)}\b[^<>]{{0,2000}}>", re.IGNORECASE)
+    tag = re.compile(rf"<(/?){re.escape(name)}\b[^<>]*>", re.IGNORECASE)
     depth, position = 1, start
     while found := tag.search(body, position):
         depth += -1 if found[1] else 1

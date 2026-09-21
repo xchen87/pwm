@@ -138,8 +138,13 @@ def _matches_intent(fact: Fact, intent: Intent) -> bool:
 def retrieve(question: str, facts: Sequence[Fact], today: date) -> Retrieved:
     intent = detect_intent(question)
     everything = {t for f in facts for t in _searchable(f)}
-    names = {w.lower() for w in re.findall(r"\b[A-Z][a-z]+", question)[1:]} | {
-        w.lower() for w in re.findall(r"(?<=[a-z,] )[A-Z][a-z]+", question)
+    # Words that are people's names in this user's world. A question word may never be
+    # "corrected" into one of these: Christina is not a typo for Christine.
+    names = {
+        _stem(w)
+        for f in facts
+        for field in (f.committed_by, f.committed_to, f.subject if f.kind == "person" else "")
+        for w in words(field or "")
     }
     terms: list[str] = []
     unknown: list[str] = []
@@ -152,11 +157,11 @@ def retrieve(question: str, facts: Sequence[Fact], today: date) -> Retrieved:
             # A slip of the keyboard should not read as "never heard of it" — but only for
             # ordinary long words. A name or a number one letter away is a different person
             # or a different amount, and guessing there answers the wrong question.
-            guessable = word.isalpha() and len(word) >= 7 and word not in names
+            guessable = word.isalpha() and len(word) >= 7
             close = (
                 difflib.get_close_matches(stem, everything, n=1, cutoff=0.88) if guessable else []
             )
-            if not close or close[0][0] != stem[0]:
+            if not close or close[0][0] != stem[0] or close[0] in names:
                 unknown.append(word)
                 continue
             corrections.append((word, close[0]))

@@ -206,3 +206,12 @@ A one-letter difference in a name or an amount is a different person or a differ
 
 ### D51. No authentication means no service outside `local`
 Until Slice 4 adds real accounts, every request outside a local environment is refused, regardless of what rows exist.
+
+### D52. History, not appearance, decides who founds a person (completes D46)
+Clustering used to promote the address with the longest display name to primary, which handed an impersonator the victim's identity. Now the first address seen founds the person and is the only `exact` one; every address that joins later is a guess until the user says otherwise, and merging two people does not vouch for either's guesses.
+
+### D53. Validity is enforced where records are made (completes D47)
+`Party` and `SourceRecord` are the only doors into the system, so they own cleanliness: bounded names and ids, real addresses or none, no NUL or surrogates, aware and plausible times. Code past that point may assume it. Truncating an address is never acceptable, because a truncated address is someone else's.
+
+### D54. A user's dismissal takes effect immediately
+Dismissing a replacement frees what it replaced in the same transaction, and the endpoint re-reads the mailbox. Waiting for "the next run" left confirmed facts invisible.

@@ -85,12 +85,19 @@ def resolve_people(sources: Sequence[SourceRecord], user: Party) -> tuple[Resolv
                 clusters[address].extend(clusters.pop(other))
                 inferred.setdefault(address, []).append(other)
 
-    return tuple(
-        ResolvedIdentity(
-            name=names[primary],
-            addresses=tuple(members),
-            source_ids=tuple(sid for member in members for sid in seen_in[member]),
-            inferred_links=tuple(inferred.get(primary, ())),
+    # The address seen first founds the person. Every other address in the cluster joined by
+    # inference and is a guess, whichever has the longer or more official-looking name: the
+    # founder is decided by history, which a newcomer cannot rewrite.
+    first_seen = {address: position for position, address in enumerate(names)}
+    identities = []
+    for primary, members in clusters.items():
+        ordered = sorted(members, key=lambda a: first_seen[a])
+        identities.append(
+            ResolvedIdentity(
+                name=names[primary][:200],
+                addresses=tuple(ordered),
+                source_ids=tuple(sid for member in ordered for sid in seen_in[member]),
+                inferred_links=tuple(ordered[1:]),
+            )
         )
-        for primary, members in clusters.items()
-    )
+    return tuple(identities)

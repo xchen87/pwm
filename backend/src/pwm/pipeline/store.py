@@ -6,6 +6,7 @@ unreviewed, and only `pwm.review` (user actions) changes that.
 """
 
 import hashlib
+import re
 from collections.abc import Sequence
 from typing import Any
 from uuid import UUID, uuid4
@@ -198,7 +199,10 @@ def _write_people(session: Session, user: User, result: PipelineResult) -> None:
         for address in identity.addresses:
             if address in existing:
                 continue
-            link = "inferred" if address in identity.inferred_links else "exact"
+            # Only the address that founds a brand-new person is "exact". Anything joining a
+            # person who already exists does so by inference, and is labelled a guess.
+            founding = not known and address not in identity.inferred_links
+            link = "exact" if founding else "inferred"
             identifier = PersonIdentifier(
                 user_id=user.id, person_id=person_id, value=address, link=link
             )
@@ -236,6 +240,19 @@ def _fields(draft: DraftAssertion) -> dict[str, Any]:
     }  # fmt: skip
 
 
+_FIGURES = re.compile(r"\d[\d,]*(?:\.\d+)?")
+
+
+def same_value(a: str, b: str) -> bool:
+    """Whether two wordings of a value say the same thing. "$1450" and "1450 USD monthly"
+    do; "2026-10-03" and "49" do not. Figures decide when there are any, words otherwise."""
+    figures_a = {f.replace(",", "") for f in _FIGURES.findall(a)}
+    figures_b = {f.replace(",", "") for f in _FIGURES.findall(b)}
+    if figures_a or figures_b:
+        return bool(figures_a & figures_b)
+    return similarity(a, b) >= SAME_EVIDENCE
+
+
 def _pair_up(
     drafts: list[tuple[int, DraftAssertion]], siblings: list[Assertion]
 ) -> dict[int, Assertion]:
@@ -250,7 +267,11 @@ def _pair_up(
         (index, draft), row = drafts[0], siblings[0]
         # Same sentence, same kind of fact: the same fact, however two extractors word it.
         # A different predicate is a different fact that happens to share the sentence.
-        if row.review == "unreviewed" or row.predicate == draft.candidate.predicate:
+        if (
+            row.review == "unreviewed"
+            or row.predicate == draft.candidate.predicate
+            or same_value(row.value, draft.candidate.value)
+        ):
             return {index: row}
     scored = sorted(
         (
@@ -303,7 +324,7 @@ def _write_assertions(
             row.source_id == source_id
             and row.kind == kind
             and similarity(row.evidence_quote, draft.candidate.evidence_quote) >= SAME_EVIDENCE
-            and similarity(row.value, draft.candidate.value) >= SAME_EVIDENCE
+            and same_value(row.value, draft.candidate.value)
         )
 
     for key, drafts in grouped.items():

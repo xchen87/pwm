@@ -562,3 +562,94 @@ def test_confirming_a_genuine_link_does_not_bless_an_impersonators_guessed_one(
     aliases = _confirmed_aliases(session, user)
     assert set(aliases) == {"priya@work.example", "priya@home.example"}
     assert len(set(aliases.values())) == 1
+
+
+def test_a_hostile_sender_name_cannot_wedge_the_people_tables(session: Session, user: User) -> None:
+    from pwm.sources import Party, SourceKind, SourceRecord
+
+    me = Party(name=user.name, address=user.email)
+    hostile = SourceRecord(
+        id="h", kind=SourceKind.EMAIL, observed_at=datetime(2026, 9, 1, tzinfo=UTC), thread_id="t",
+        sender=Party(name="E" * 250 + " Smith", address="eve@x.example"), recipients=(me,),
+        subject="hi", body="I'll send the file by Friday.",
+    )  # fmt: skip
+    ingest(session, user, [hostile])
+    process_user(session, user, HeuristicTriager(), HeuristicExtractor())
+    assert count(session, Assertion) >= 1
+
+
+def test_the_address_that_joins_an_existing_person_is_always_a_guess(
+    session: Session, world: User
+) -> None:
+    links = dict(session.execute(select(PersonIdentifier.value, PersonIdentifier.link)).all())  # type: ignore[arg-type]
+    assert links["priya.n@example.com"] == "exact"
+    assert links["priya@natarajan-design.example"] == "inferred"
+    per_person = {}
+    for identifier in session.scalars(select(PersonIdentifier)):
+        per_person.setdefault(identifier.person_id, []).append(identifier.link)
+    assert all(found.count("exact") == 1 for found in per_person.values())
+
+
+def test_merging_people_does_not_vouch_for_their_guessed_addresses(
+    session: Session, user: User
+) -> None:
+    from pwm.db.models import Person
+
+    keep, absorbed = (
+        Person(user_id=user.id, display_name="Priya"),
+        Person(user_id=user.id, display_name="P. Raman"),
+    )
+    session.add_all([keep, absorbed])
+    session.flush()
+    for person, address, link in ((keep, "p@work.example", "exact"), (absorbed, "p@home.example", "exact"),
+                                  (absorbed, "p@evil.example", "inferred")):  # fmt: skip
+        session.add(
+            PersonIdentifier(user_id=user.id, person_id=person.id, value=address, link=link)
+        )
+    session.flush()
+    review.merge_people(session, user, keep.id, absorbed.id)
+    links = dict(session.execute(select(PersonIdentifier.value, PersonIdentifier.link)).all())  # type: ignore[arg-type]
+    assert links == {
+        "p@work.example": "exact",
+        "p@home.example": "user",
+        "p@evil.example": "inferred",
+    }
+
+
+def test_dismissing_a_replacement_frees_the_original_at_once(session: Session, user: User) -> None:
+    _priced_thread(session, user, ["Our quote is $20 for it.", "Update: the total is $30 for it."])
+    process_user(session, user, HeuristicTriager(), HeuristicExtractor())
+    old, new = _value(session, "20"), _value(session, "30")
+    assert old.superseded_by_id == new.id
+    review.dismiss(session, user, new.id)  # no pipeline run in between
+    session.refresh(old)
+    assert old.superseded_by_id is None
+
+
+def test_a_dismissed_fact_stays_dismissed_when_a_new_extractor_rewords_everything(
+    session: Session, user: User
+) -> None:
+    from pwm.extraction.candidates import Candidate, CandidateKind, Origin
+    from pwm.pipeline.store import same_value
+
+    assert same_value("$1450", "1450 USD monthly") and not same_value("2026-10-03", "49")
+    body = (
+        "The new price: the rent is $1450 from October."  # "price" gets it past rule-based triage
+    )
+    _one_mail(session, user, body)
+
+    def fact(request: ExtractionRequest, predicate: str, value: str) -> Candidate:
+        return Candidate(source_id=request.source.id, kind=CandidateKind.THING, subject="Flat", predicate=predicate,
+                         value=value, evidence_quote=body, origin=Origin.SOURCE_EXPLICIT)  # fmt: skip
+
+    process_user(
+        session, user, HeuristicTriager(), Versioned("v1", lambda r: [fact(r, "price", "$1450")])
+    )
+    review.dismiss(session, user, _rows(session)[0].id)
+    process_user(
+        session,
+        user,
+        HeuristicTriager(),
+        Versioned("v2", lambda r: [fact(r, "rent", "1450 USD monthly")]),
+    )
+    assert [(r.predicate, r.review) for r in _rows(session)] == [("price", "rejected")]

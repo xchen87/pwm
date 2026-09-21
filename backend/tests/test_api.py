@@ -109,3 +109,18 @@ def test_a_conflict_is_settled_by_dismissing_one_side(client: TestClient, sessio
     client.post(f"/assertions/{b['id']}/dismiss")
     detail = client.get(f"/assertions/{a['id']}").json()
     assert detail["has_conflict"] is False and detail["related"] == []
+
+
+def test_dismissing_over_the_api_rereads_the_mailbox(client: TestClient, session: Session) -> None:
+    from sqlalchemy import select
+
+    from pwm.db.models import Assertion
+
+    new = session.scalars(select(Assertion).where(Assertion.value == "19950")).one()
+    old = session.scalars(select(Assertion).where(Assertion.value == "18400")).one()
+    assert old.superseded_by_id == new.id
+    assert client.post(f"/assertions/{new.id}/dismiss").status_code == 200
+    session.refresh(old)
+    assert old.superseded_by_id is None
+    answer = client.post("/ask", json={"question": "What is the kitchen quote?"}).json()
+    assert "18400" in answer["text"] and "19950" not in answer["text"]
