@@ -41,10 +41,14 @@ class Retrieved(BaseModel):
     unknown_terms: list[str] = []
 
 
+_POSSESSIVE = re.compile(r"['’]s\b")
+
+
 def words(text: str) -> list[str]:
-    return [
-        w for w in re.findall(r"[a-z0-9]+", text.lower().replace("'", "")) if w not in _STOPWORDS
-    ]
+    """Search words: lowercased, possessives and apostrophes (straight or curly) removed,
+    and single letters ignored."""
+    cleaned = _POSSESSIVE.sub("", text.lower()).replace("'", "").replace("’", "")
+    return [w for w in re.findall(r"[a-z0-9]+", cleaned) if len(w) > 1 and w not in _STOPWORDS]
 
 
 def _stem(word: str) -> str:

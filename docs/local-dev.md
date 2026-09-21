@@ -2,6 +2,12 @@
 
 Everything runs on a PC. The app you open in the browser or emulator is the same code that ships to phones.
 
+## Fastest path
+```sh
+scripts/demo.sh            # everything, with fresh demo data; see docs/demo-script.md
+scripts/verify.sh          # the full regression + functional gate (add --quick to skip the slow parts)
+```
+
 ## Prerequisites
 - [uv](https://docs.astral.sh/uv/) (installs Python 3.12 for you)
 - Node 22+
@@ -26,7 +32,8 @@ npm run android    # Android emulator (set EXPO_PUBLIC_API_URL=http://10.0.2.2:8
 npm start          # QR code for Expo Go on a physical phone
 ```
 
-## Checks (run all of these before every commit)
+## Checks
+`scripts/verify.sh` runs all of these plus the eval regression gate, a real-server functional test, and a production web build. The individual commands:
 ```sh
 uv run ruff format --check . && uv run ruff check . && uv run mypy && uv run pytest
 cd app && npm run typecheck && npm run lint && npm test

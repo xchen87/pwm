@@ -154,3 +154,11 @@ The user has written to them, or they share a calendar event, as of the message 
 
 ### D36. Eval baseline is committed and gated
 `eval/baselines/heuristic.json` + `pwm_eval.check`. A score may only get worse through a visible edit to that file with the reason logged in `docs/PROGRESS.md`. First deliberate change: `signal_emails_dropped_rate` 0.00 → 0.13 when the metric learned to see triage drops.
+
+### D37. Ask Your World retrieves in process, and declines by rule
+Retrieval is plain code over one user's live assertions: intent detection (mine / owed to me / deadlines / decision / when / history / lookup), weighted word overlap on subject, value, quote and message context, superseded facts only for questions about the past, low-confidence sources excluded. If the question names something that appears nowhere in the user's world, it declines and says which word. The reasoner receives the retrieved facts and must cite them; no evidence means no answer.
+**Why not pgvector/FTS now:** semantic retrieval needs an embedding model, which needs a provider (none configured), and at MVP scale a user's live assertions fit in memory. The `retrieve()` signature is the seam: SQL full-text search and pgvector replace the body when a real mailbox makes this slow or when paraphrase recall (measured on the golden set) demands it.
+**Known limit:** word overlap misses paraphrase ("the dental thing" finds nothing about "appointment"). `ask_hit_rate` on the synthetic questions is 0.82 with 0.00 false answers; the misses are facts the stand-in extractor never found.
+
+### D38. Remember / Forget are user actions
+`POST /memories` stores the note as a user-capture source, runs the funnel, and then — in `review.remember`, with an audit event — confirms the verbatim memory. Anything read out of the note stays a possibility. `DELETE /memories/{id}` deletes the capture source, which cascades to the memory and everything interpreted from it.

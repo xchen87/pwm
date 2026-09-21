@@ -57,7 +57,9 @@ def ensure_user(session: Session, party: Party) -> User:
     return user
 
 
-def ingest(session: Session, user: User, records: Sequence[SourceRecord]) -> int:
+def ingest(
+    session: Session, user: User, records: Sequence[SourceRecord], connector: str = "manual"
+) -> int:
     """Store new source records and queue processing. Safe to call repeatedly with the same data."""
     inserted = 0
     for record in records:
@@ -66,6 +68,7 @@ def ingest(session: Session, user: User, records: Sequence[SourceRecord]) -> int
             .values(
                 user_id=user.id,
                 external_id=record.id,
+                connector=connector,
                 kind=record.kind.value,
                 thread_id=record.thread_id,
                 observed_at=record.observed_at,

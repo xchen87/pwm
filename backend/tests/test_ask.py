@@ -125,3 +125,10 @@ def test_what_is_read_out_of_a_note_is_still_only_a_possibility(client: TestClie
 
 def test_blank_memories_are_refused(client: TestClient) -> None:
     assert client.post("/memories", json={"text": "  "}).status_code == 422
+
+
+def test_possessives_and_curly_apostrophes_do_not_become_search_terms() -> None:
+    from pwm.ask.retrieval import words
+
+    assert words("What is Dana’s new phone number?") == words("What is Dana's new phone number?")
+    assert "s" not in words("What is Dana’s number?") and "dana" in words("Dana’s")

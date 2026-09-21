@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from pwm.api.ask import router as ask_router
 from pwm.api.commitments import router as commitments_router
+from pwm.api.connections import router as connections_router
 from pwm.api.home import router as home_router
 from pwm.config import get_settings
 
@@ -25,6 +26,7 @@ app.add_middleware(
 app.include_router(commitments_router)
 app.include_router(home_router)
 app.include_router(ask_router)
+app.include_router(connections_router)
 
 
 @app.get("/health")

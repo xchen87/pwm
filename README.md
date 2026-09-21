@@ -52,9 +52,14 @@ Built last, and only once design-partner evidence supports them: passive Decisio
 Start with `docs/local-dev.md`.
 
 ## Status
-Phase 0 and Slice 1 (Commitment Radar) are built. `uv run python -m pwm.cli demo` loads a synthetic mailbox; the app then shows possible commitments with Confirm / Dismiss / Edit and a source-inspection screen for each.
+Built and demoable on a laptop: Commitment Radar, Your World (what changed / needs attention / remembered), World Brief, Ask Your World, Remember / Correct / Forget, and source inspection for every claim.
 
-Extraction currently runs on a rule-based stand-in because no model credentials are configured. The Anthropic adapter is written and unit-tested but has not been run against the live API, so **no score in `eval/results/` says anything yet about real-world quality**. Next: run the LLM extractor on the fixture and the golden set, then Slice 2 (What changed + World Brief).
+```sh
+scripts/demo.sh        # database, synthetic mailbox, API, and the app at http://localhost:8081
+```
+Walkthrough: `docs/demo-script.md`. Progress log and review history: `docs/PROGRESS.md`.
+
+What this is **not** yet: extraction runs on a rule-based stand-in (no model credentials are configured; the Anthropic adapter is written and unit-tested but has never been run live), the mailbox is synthetic, and there are no accounts, no real Gmail/Calendar connection, and no phone build. No score in `eval/` says anything yet about real-world quality.
 
 ## Build philosophy
 The moat is not the foundation model. It is the persistent, temporal, user-controlled world model, plus provenance, permissions, trust, and action history.

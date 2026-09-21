@@ -11,6 +11,7 @@ Backend variables use the `PWM_` prefix and may be placed in a `.env` file at th
 | `PWM_EXTRACTION_MODEL` | `claude-opus-5` | Model for the extraction stage. |
 | `PWM_DEV_USER_EMAIL` / `PWM_DEV_USER_NAME` | `alex.rivera@example.com` / `Alex Rivera` | The single local user the API serves until Slice 4 adds authentication. Matches the synthetic fixture. |
 | `ANTHROPIC_API_KEY` | unset | Read by the Anthropic SDK itself. Server-side only. |
+| `PWM_FIXED_NOW` | unset | Pins the clock (ISO timestamp). `scripts/demo.sh` sets `2026-09-12T09:00:00+00:00`, inside the synthetic mailbox's timeline. Never set in production. |
 | `PWM_CORS_ORIGINS` | `["http://localhost:8081","http://localhost:19006"]` | JSON list of web origins allowed to call the API. |
 
 App variables are read by Expo at build time. Anything prefixed `EXPO_PUBLIC_` is compiled into the app bundle and is visible to anyone who has the app: never put a secret in one.

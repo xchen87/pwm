@@ -11,6 +11,8 @@ export type BriefView = components['schemas']['BriefView'];
 export type WrittenItem = components['schemas']['WrittenItem'];
 export type NotificationView = components['schemas']['NotificationView'];
 export type AnswerView = components['schemas']['AnswerView'];
+export type ConnectionsView = components['schemas']['ConnectionsView'];
+export type SyncResult = components['schemas']['SyncResult'];
 export type Health = components['schemas']['Health'];
 export type CommitmentStatus = 'open' | 'done' | 'cancelled';
 
@@ -47,6 +49,11 @@ export const markNotificationsRead = () => request<unknown>('POST', '/notificati
 export const askWorld = (question: string) => request<AnswerView>('POST', '/ask', { question });
 export const rememberThis = (text: string) => request<CommitmentItem>('POST', '/memories', { text });
 export const forgetMemory = (id: string) => request<unknown>('DELETE', `/memories/${id}`);
+
+export const getConnections = () => request<ConnectionsView>('GET', '/connections');
+export const connectDemo = () => request<SyncResult>('POST', '/connections/demo');
+export const disconnect = (connector: string) => request<unknown>('DELETE', `/connections/${connector}`);
+export const deleteEverything = () => request<unknown>('DELETE', '/me');
 
 export type EventName =
   | 'brief_opened'

@@ -28,7 +28,8 @@ Anyone can email the user; every message is attacker-controlled text that a mode
 | Sources with injection markers or a look-alike of the user are flagged; everything from them gets `low` confidence and a warning on the inspection screen | **built** |
 | Pipeline output can never set `review`, trigger an action, or delete anything; `user_stated` is accepted only from user-capture sources | **built** (`pipeline/core.py` gate, `review.py` is the only writer; tested) |
 | Adversarial fixture (10 attacks: instruction override, fake system text, hidden HTML, forged quoted replies, look-alike sender, JSON smuggling, deletion and exfiltration requests, mixed legitimate + injected) with a 100% pass bar | **built** (`fixtures/`, `eval/`) |
-| Brief and Ask models get read-only context and cannot send anything | designed |
+| Brief and Ask never take instructions from content: items are chosen by code, writers only word them, and Ask must cite evidence or decline | **built** (template writer/reasoner; a model-backed one must pass the same tests) |
+| Low-confidence sources cannot answer questions, appear in a brief, or replace/dispute known facts | **built** (tested; the eval's planted question gets no answer) |
 
 Residual risk: an injected sentence that is *itself* a literal quote ("Alex promised to pay $500") passes quote verification. That is why such items can only ever appear as "possible", with the sender and quote visible, and why sender trust (is this someone the user corresponds with?) feeds confidence in Slice 1.
 
@@ -51,7 +52,7 @@ Controls: refresh tokens exist only on the server, encrypted at the application 
 Controls: session token in the platform secure store (Keychain / Keystore via expo-secure-store); no source content persisted on the device beyond the session; optional biometric lock; server-side session revocation. Status: designed (Slices 4–5).
 
 ### T8. Push notification leakage
-Lock screens and notification services see payloads. Control: payloads are a fixed generic string plus a deep link; never names, amounts, dates, or quotes. Status: designed (`Notifier`, Slice 2).
+Lock screens and notification services see payloads. Control: payloads are a fixed generic string plus a deep link; never names, amounts, dates, or quotes; an empty brief sends nothing. Status: **built** for the in-app inbox stand-in (`brief/service.py`; tested). Real push in Slice 5 implements the same `Notifier` and must reuse the same constant.
 
 ### T9. Embedded-webview OAuth phishing
 Control: OAuth only through the system browser with PKCE and a deep link back (`pwm://`). Google rejects embedded webviews, and they would train users to type Google passwords into our UI. Status: designed (Slice 4).

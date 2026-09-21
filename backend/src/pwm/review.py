@@ -184,7 +184,7 @@ def remember(
         sender=Party(name=user.name, address=user.email),
         body=text,
     )
-    ingest(session, user, [record])
+    ingest(session, user, [record], connector="capture")
     process_user(session, user, triager, extractor)
     memory = session.scalars(
         select(Assertion)

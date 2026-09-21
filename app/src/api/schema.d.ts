@@ -286,6 +286,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Connections */
+        get: operations["connections_connections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/connections/demo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect Demo */
+        post: operations["connect_demo_connections_demo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/connections/{connector}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Disconnect */
+        delete: operations["disconnect_connections__connector__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Everything
+         * @description Delete the user and, by cascade, everything known about them. The local development
+         *     identity is then recreated empty so the app can start again from onboarding.
+         */
+        delete: operations["delete_everything_me_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -375,6 +447,17 @@ export interface components {
             source_suspicious: boolean;
             /** Related */
             related: components["schemas"]["RelatedAssertion"][];
+        };
+        /** Available */
+        Available: {
+            /** Connector */
+            connector: string;
+            /** Label */
+            label: string;
+            /** Available */
+            available: boolean;
+            /** Note */
+            note: string;
         };
         /** BriefItem */
         BriefItem: {
@@ -495,6 +578,31 @@ export interface components {
             /** Has Conflict */
             has_conflict: boolean;
             source: components["schemas"]["SourceSummary"];
+        };
+        /** ConnectionView */
+        ConnectionView: {
+            /** Connector */
+            connector: string;
+            /** Label */
+            label: string;
+            /**
+             * Connected At
+             * Format: date-time
+             */
+            connected_at: string;
+            /** Last Synced At */
+            last_synced_at: string | null;
+            /** Sources */
+            sources: number;
+        };
+        /** ConnectionsView */
+        ConnectionsView: {
+            /** Connected */
+            connected: components["schemas"]["ConnectionView"][];
+            /** Available */
+            available: components["schemas"]["Available"][];
+            /** Understood */
+            understood: number;
         };
         /** Correction */
         Correction: {
@@ -620,6 +728,13 @@ export interface components {
         StatusChange: {
             /** Status */
             status: string;
+        };
+        /** SyncResult */
+        SyncResult: {
+            /** New Sources */
+            new_sources: number;
+            /** Understood */
+            understood: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -1101,6 +1216,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connections_connections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionsView"];
+                };
+            };
+        };
+    };
+    connect_demo_connections_demo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncResult"];
+                };
+            };
+        };
+    };
+    disconnect_connections__connector__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connector: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_everything_me_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
         };

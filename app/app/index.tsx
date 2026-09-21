@@ -3,8 +3,9 @@ import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getHome, type Home, recordVisit } from '../src/api/client';
+import { type ConnectionsView, getConnections, getHome, type Home, recordVisit } from '../src/api/client';
 import { ChangeCard } from '../src/components/ChangeCard';
+import { Onboarding } from '../src/components/Onboarding';
 import { color, space } from '../src/theme';
 import { dueLabel, heading, parties } from '../src/wording';
 
@@ -15,12 +16,15 @@ function sinceLabel(iso: string): string {
 export default function YourWorld() {
   const router = useRouter();
   const [home, setHome] = useState<Home | null>(null);
+  const [connections, setConnections] = useState<ConnectionsView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      setHome(await getHome());
+      const current = await getConnections();
+      setConnections(current);
+      if (current.connected.length > 0) setHome(await getHome());
       setError(null);
     } catch {
       setError('Can’t reach your world right now. Pull down to try again.');
@@ -34,6 +38,10 @@ export default function YourWorld() {
         .then(load);
     }, [load]),
   );
+
+  if (connections && connections.connected.length === 0) {
+    return <Onboarding connections={connections} onConnected={load} />;
+  }
 
   const open = (id: string) => router.push({ pathname: '/assertion/[id]', params: { id } });
 
@@ -115,6 +123,9 @@ export default function YourWorld() {
             <Pressable onPress={() => router.push('/remember')} accessibilityRole="link">
               <Text style={[styles.link, styles.add]}>+ Remember something</Text>
             </Pressable>
+            <Pressable onPress={() => router.push('/settings')} accessibilityRole="link">
+              <Text style={styles.settings}>Connections and your data</Text>
+            </Pressable>
           </>
         )}
       </ScrollView>
@@ -129,6 +140,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 30, fontWeight: '700', color: color.ink, marginTop: space.xl },
   link: { fontSize: 15, fontWeight: '700', color: color.accent },
   add: { marginTop: space.md },
+  settings: { fontSize: 14, color: color.muted, marginTop: 40, textDecorationLine: 'underline' },
   ask: {
     backgroundColor: color.card,
     borderWidth: 1,

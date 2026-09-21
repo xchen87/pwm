@@ -49,6 +49,8 @@ class Source(Base):
     id: Mapped[UUID] = _id()
     user_id: Mapped[UUID] = _user()
     external_id: Mapped[str] = mapped_column(String(200))
+    # Which connection brought this in, so disconnecting can remove exactly its data.
+    connector: Mapped[str] = mapped_column(String(32), default="manual", index=True)
     kind: Mapped[str] = mapped_column(String(32))
     thread_id: Mapped[str | None] = mapped_column(String(200), index=True)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -257,3 +259,19 @@ class ProductEvent(Base):
     name: Mapped[str] = mapped_column(String(48), index=True)
     subject_id: Mapped[UUID | None] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class Connection(Base):
+    """A data source the user has connected. Disconnecting deletes what it brought in."""
+
+    __tablename__ = "connections"
+    __table_args__ = (UniqueConstraint("user_id", "connector"),)
+
+    id: Mapped[UUID] = _id()
+    user_id: Mapped[UUID] = _user()
+    connector: Mapped[str] = mapped_column(String(32))
+    label: Mapped[str] = mapped_column(String(120))
+    connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The newest record seen, so the next sync only asks for what came after it.
+    cursor: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -140,3 +140,25 @@ def journey_30_ask_remember_forget(api: Any, check: Any, run: Any) -> None:
         not api.post("/ask", {"question": "Where is the spare key?"})["grounded"],
         "a forgotten note is gone",
     )
+
+
+def journey_90_delete_onboard_disconnect(api: Any, check: Any, run: Any) -> None:
+    api.call("DELETE", "/me")
+    empty = api.get("/connections")
+    check(empty["connected"] == [] and empty["understood"] == 0, "delete everything leaves nothing")
+    check(api.get("/commitments") == [], "after deletion there is nothing to show")
+
+    result = api.post("/connections/demo")
+    check(
+        result["new_sources"] == 122 and result["understood"] > 30,
+        "connecting the demo mailbox builds a world",
+    )
+    check(api.post("/connections/demo")["new_sources"] == 0, "connecting again ingests nothing new")
+    check(api.get("/briefs/latest")["items"], "the first brief is ready right after connecting")
+    check(api.get("/home")["needs_attention_total"] >= 10, "home is populated after onboarding")
+
+    api.post("/memories", {"text": "My locker code is on the fridge."})
+    removed = api.call("DELETE", "/connections/demo")
+    check(removed["removed_sources"] == 122, "disconnecting removes what the connection brought in")
+    check(api.get("/commitments") == [], "nothing derived from the disconnected source remains")
+    check(len(api.get("/home")["remembered"]) == 1, "the user's own note survives a disconnect")

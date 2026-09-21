@@ -554,6 +554,108 @@
         }
       }
     },
+    "/connections": {
+      "get": {
+        "summary": "Connections",
+        "operationId": "connections_connections_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionsView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connections/demo": {
+      "post": {
+        "summary": "Connect Demo",
+        "operationId": "connect_demo_connections_demo_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connections/{connector}": {
+      "delete": {
+        "summary": "Disconnect",
+        "operationId": "disconnect_connections__connector__delete",
+        "parameters": [
+          {
+            "name": "connector",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connector"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "title": "Response Disconnect Connections  Connector  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me": {
+      "delete": {
+        "summary": "Delete Everything",
+        "description": "Delete the user and, by cascade, everything known about them. The local development\nidentity is then recreated empty so the app can start again from onboarding.",
+        "operationId": "delete_everything_me_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Delete Everything Me Delete"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -792,6 +894,34 @@
           "related"
         ],
         "title": "AssertionDetail"
+      },
+      "Available": {
+        "properties": {
+          "connector": {
+            "type": "string",
+            "title": "Connector"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connector",
+          "label",
+          "available",
+          "note"
+        ],
+        "title": "Available"
       },
       "BriefItem": {
         "properties": {
@@ -1123,6 +1253,77 @@
           "source"
         ],
         "title": "CommitmentItem"
+      },
+      "ConnectionView": {
+        "properties": {
+          "connector": {
+            "type": "string",
+            "title": "Connector"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "connected_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Connected At"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "sources": {
+            "type": "integer",
+            "title": "Sources"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connector",
+          "label",
+          "connected_at",
+          "last_synced_at",
+          "sources"
+        ],
+        "title": "ConnectionView"
+      },
+      "ConnectionsView": {
+        "properties": {
+          "connected": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionView"
+            },
+            "type": "array",
+            "title": "Connected"
+          },
+          "available": {
+            "items": {
+              "$ref": "#/components/schemas/Available"
+            },
+            "type": "array",
+            "title": "Available"
+          },
+          "understood": {
+            "type": "integer",
+            "title": "Understood"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connected",
+          "available",
+          "understood"
+        ],
+        "title": "ConnectionsView"
       },
       "Correction": {
         "properties": {
@@ -1471,6 +1672,24 @@
           "status"
         ],
         "title": "StatusChange"
+      },
+      "SyncResult": {
+        "properties": {
+          "new_sources": {
+            "type": "integer",
+            "title": "New Sources"
+          },
+          "understood": {
+            "type": "integer",
+            "title": "Understood"
+          }
+        },
+        "type": "object",
+        "required": [
+          "new_sources",
+          "understood"
+        ],
+        "title": "SyncResult"
       },
       "ValidationError": {
         "properties": {

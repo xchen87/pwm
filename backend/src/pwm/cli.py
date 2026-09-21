@@ -8,8 +8,6 @@ uv run python -m pwm.cli reset   # delete the local user and everything derived 
 """
 
 import argparse
-import json
-from pathlib import Path
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -17,14 +15,14 @@ from sqlalchemy.orm import Session
 from pwm.brief.service import InboxNotifier, generate
 from pwm.brief.writer import TemplateBriefWriter
 from pwm.config import get_settings
+from pwm.connectors.demo import DemoMailbox
+from pwm.connectors.service import sync
 from pwm.db.models import User
 from pwm.db.session import get_engine
 from pwm.extraction.factory import build_stages
-from pwm.pipeline.store import ensure_user, ingest, process_user
+from pwm.pipeline.store import ensure_user, process_user
 from pwm.pipeline.worker import run_all
-from pwm.sources import Party, SourceRecord
-
-FIXTURE = Path(__file__).resolve().parents[3] / "fixtures" / "synthetic" / "sources.json"
+from pwm.sources import Party
 
 
 def main() -> None:
@@ -40,12 +38,13 @@ def main() -> None:
             print("local user and all derived data deleted")
             return
         if command == "demo":
-            records = [SourceRecord.model_validate(r) for r in json.loads(FIXTURE.read_text())]
             user = ensure_user(
                 session, Party(name=settings.dev_user_name, address=settings.dev_user_email)
             )
-            print(f"ingested {ingest(session, user, records)} new sources")
+            added = sync(session, user, DemoMailbox(), *build_stages())
             session.commit()
+            print(f"ingested {added} new sources")
+            return
         if command == "brief":
             user = session.scalars(select(User).where(User.email == settings.dev_user_email)).one()
             brief = generate(session, user, TemplateBriefWriter(), InboxNotifier(), "weekly")
