@@ -358,6 +358,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** People */
+        get: operations["people_people_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/people/identifiers/{identifier_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Same Person
+         * @description Yes, this address is that person. Facts are re-read with that in mind: what looked
+         *     like a disagreement between two people may turn out to be one person's update.
+         */
+        post: operations["same_person_people_identifiers__identifier_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/people/identifiers/{identifier_id}/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Different Person */
+        post: operations["different_person_people_identifiers__identifier_id__split_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -657,6 +712,18 @@ export interface components {
             /** Unread Notifications */
             unread_notifications: number;
         };
+        /** IdentifierView */
+        IdentifierView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Address */
+            address: string;
+            /** Link */
+            link: string;
+        };
         /**
          * ItemKind
          * @enum {string}
@@ -666,6 +733,11 @@ export interface components {
         NewMemory: {
             /** Text */
             text: string;
+        };
+        /** NotThem */
+        NotThem: {
+            /** Name */
+            name: string;
         };
         /** NotificationView */
         NotificationView: {
@@ -685,6 +757,18 @@ export interface components {
             created_at: string;
             /** Read */
             read: boolean;
+        };
+        /** PersonView */
+        PersonView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Identifiers */
+            identifiers: components["schemas"]["IdentifierView"][];
         };
         /** Question */
         Question: {
@@ -1311,6 +1395,96 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    people_people_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonView"][];
+                };
+            };
+        };
+    };
+    same_person_people_identifiers__identifier_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identifier_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    different_person_people_identifiers__identifier_id__split_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identifier_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotThem"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

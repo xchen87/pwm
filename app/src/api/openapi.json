@@ -656,6 +656,127 @@
         }
       }
     },
+    "/people": {
+      "get": {
+        "summary": "People",
+        "operationId": "people_people_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PersonView"
+                  },
+                  "type": "array",
+                  "title": "Response People People Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/people/identifiers/{identifier_id}/confirm": {
+      "post": {
+        "summary": "Same Person",
+        "description": "Yes, this address is that person. Facts are re-read with that in mind: what looked\nlike a disagreement between two people may turn out to be one person's update.",
+        "operationId": "same_person_people_identifiers__identifier_id__confirm_post",
+        "parameters": [
+          {
+            "name": "identifier_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identifier Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Same Person People Identifiers  Identifier Id  Confirm Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/people/identifiers/{identifier_id}/split": {
+      "post": {
+        "summary": "Different Person",
+        "operationId": "different_person_people_identifiers__identifier_id__split_post",
+        "parameters": [
+          {
+            "name": "identifier_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identifier Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotThem"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Different Person People Identifiers  Identifier Id  Split Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -1489,6 +1610,30 @@
         ],
         "title": "Home"
       },
+      "IdentifierView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "link": {
+            "type": "string",
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "address",
+          "link"
+        ],
+        "title": "IdentifierView"
+      },
       "ItemKind": {
         "type": "string",
         "enum": [
@@ -1515,6 +1660,21 @@
           "text"
         ],
         "title": "NewMemory"
+      },
+      "NotThem": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "NotThem"
       },
       "NotificationView": {
         "properties": {
@@ -1550,6 +1710,33 @@
           "read"
         ],
         "title": "NotificationView"
+      },
+      "PersonView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "identifiers": {
+            "items": {
+              "$ref": "#/components/schemas/IdentifierView"
+            },
+            "type": "array",
+            "title": "Identifiers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "identifiers"
+        ],
+        "title": "PersonView"
       },
       "Question": {
         "properties": {

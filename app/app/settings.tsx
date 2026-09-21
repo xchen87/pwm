@@ -2,18 +2,29 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { type ConnectionsView, deleteEverything, disconnect, getConnections } from '../src/api/client';
+import {
+  confirmSamePerson,
+  type ConnectionsView,
+  deleteEverything,
+  disconnect,
+  getConnections,
+  getPeople,
+  markDifferentPerson,
+  type PersonView,
+} from '../src/api/client';
 import { Button } from '../src/components/Button';
 import { color, space } from '../src/theme';
 
 export default function Settings() {
   const router = useRouter();
   const [state, setState] = useState<ConnectionsView | null>(null);
+  const [people, setPeople] = useState<PersonView[]>([]);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     getConnections().then(setState, () => setError('Can’t reach your world right now.'));
+    getPeople().then(setPeople, () => undefined);
   }, []);
   useFocusEffect(load);
 
@@ -56,6 +67,34 @@ export default function Settings() {
           </Text>
         </View>
       ))}
+
+      {people.some((p) => p.identifiers.some((i) => i.link === 'inferred')) && (
+        <Text style={styles.section}>Is this the same person?</Text>
+      )}
+      {people.flatMap((person) =>
+        person.identifiers
+          .filter((identifier) => identifier.link === 'inferred')
+          .map((identifier) => (
+            <View key={identifier.id} style={styles.card}>
+              <Text style={styles.label}>{identifier.address}</Text>
+              <Text style={styles.muted}>
+                This looks like another address for {person.name}. Until you say so, it can’t change
+                anything {person.name} told you — anyone can sign a message with someone else’s name.
+              </Text>
+              <View style={styles.row}>
+                <Button
+                  label={`Yes, that’s ${person.name.split(' ')[0]}`}
+                  kind="primary"
+                  onPress={() => run(() => confirmSamePerson(identifier.id), false)}
+                />
+                <Button
+                  label="No, someone else"
+                  onPress={() => run(() => markDifferentPerson(identifier.id, identifier.address), false)}
+                />
+              </View>
+            </View>
+          )),
+      )}
 
       <Text style={styles.section}>What I hold</Text>
       <Text style={styles.muted}>{state?.understood ?? 0} things understood from what you connected.</Text>

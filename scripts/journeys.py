@@ -162,3 +162,20 @@ def journey_90_delete_onboard_disconnect(api: Any, check: Any, run: Any) -> None
     check(removed["removed_sources"] == 122, "disconnecting removes what the connection brought in")
     check(api.get("/commitments") == [], "nothing derived from the disconnected source remains")
     check(len(api.get("/home")["remembered"]) == 1, "the user's own note survives a disconnect")
+
+
+def journey_40_same_person(api: Any, check: Any, run: Any) -> None:
+    people = api.get("/people")
+    inferred = [(p, i) for p in people for i in p["identifiers"] if i["link"] == "inferred"]
+    check(len(inferred) >= 1, "guessed second addresses are listed for the user to judge")
+    person, identifier = inferred[0]
+    api.post(f"/people/identifiers/{identifier['id']}/confirm")
+    links = {i["address"]: i["link"] for p in api.get("/people") for i in p["identifiers"]}
+    check(
+        links[identifier["address"]] == "user",
+        "confirming a link records it as the user's decision",
+    )
+    run("uv", "run", "python", "-m", "pwm.cli", "reprocess")
+    links = {i["address"]: i["link"] for p in api.get("/people") for i in p["identifiers"]}
+    check(links[identifier["address"]] == "user", "reprocessing never undoes a link the user made")
+    api.post("/people/identifiers/00000000-0000-0000-0000-000000000000/confirm", expect=404)

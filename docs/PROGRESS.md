@@ -110,3 +110,9 @@ Reviewer confirmed sound: forget/ownership checks, double-remember, correction c
 - `scripts/verify.sh`: **ALL GREEN** — 155 backend/eval tests (incl. populated-database migration test), 8 app tests, 87 functional checks; eval gate no regression across 24 scores.
 
 **Also built while the review ran:** scheduled briefs (`pwm.cli tick`, D40); model-backed brief writer and reasoner with code-side guards, never run live (D39).
+
+**Same-person confirmation.** The identity fix (D42) said only links "the user made by hand" carry authority, but nothing let the user make one. Added `GET /people`, confirm and split endpoints (each re-reads the mailbox afterwards), and an "Is this the same person?" card in *Connections and your data* that explains why it asks. Test shows the effect end to end: before confirming, Priya's second address can only dispute the Saturday plan; after, her "change of plan" supersedes it. Reprocessing never undoes a confirmed link (functional journey).
+- `scripts/verify.sh`: **ALL GREEN** — 158 backend/eval tests, 8 app tests, 95 functional checks.
+- Checked: no Android SDK on this machine, so the emulator acceptance item stays open; Expo Go on a phone is the quickest route.
+
+**Demo-readiness independent review.** Started over `00a624e..42d8ea7` (rewritten persistence, connections, Google normalization, model-backed writers, scheduled briefs, scripts, new app screens), including whether the earlier fixes actually hold. Findings and dispositions will be recorded below.

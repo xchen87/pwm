@@ -206,3 +206,17 @@ def forget(
     if memory.kind != "memory":
         raise LookupError(str(assertion_id))
     delete_sources(session, user, [memory.source.external_id], triager, extractor)
+
+
+def confirm_link(session: Session, user: User, identifier_id: UUID) -> PersonIdentifier:
+    """The user says an inferred second address really is that person. From now on it may
+    speak for them (decisions D42)."""
+    identifier = session.scalar(
+        select(PersonIdentifier).where(
+            PersonIdentifier.id == identifier_id, PersonIdentifier.user_id == user.id
+        )
+    )
+    if identifier is None:
+        raise LookupError(str(identifier_id))
+    identifier.link = "user"
+    return identifier

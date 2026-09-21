@@ -13,6 +13,7 @@ export type NotificationView = components['schemas']['NotificationView'];
 export type AnswerView = components['schemas']['AnswerView'];
 export type ConnectionsView = components['schemas']['ConnectionsView'];
 export type SyncResult = components['schemas']['SyncResult'];
+export type PersonView = components['schemas']['PersonView'];
 export type Health = components['schemas']['Health'];
 export type CommitmentStatus = 'open' | 'done' | 'cancelled';
 
@@ -54,6 +55,12 @@ export const getConnections = () => request<ConnectionsView>('GET', '/connection
 export const connectDemo = () => request<SyncResult>('POST', '/connections/demo');
 export const disconnect = (connector: string) => request<unknown>('DELETE', `/connections/${connector}`);
 export const deleteEverything = () => request<unknown>('DELETE', '/me');
+
+export const getPeople = () => request<PersonView[]>('GET', '/people');
+export const confirmSamePerson = (identifierId: string) =>
+  request<unknown>('POST', `/people/identifiers/${identifierId}/confirm`);
+export const markDifferentPerson = (identifierId: string, name: string) =>
+  request<unknown>('POST', `/people/identifiers/${identifierId}/split`, { name });
 
 export type EventName =
   | 'brief_opened'

@@ -6,6 +6,7 @@ from pwm.api.ask import router as ask_router
 from pwm.api.commitments import router as commitments_router
 from pwm.api.connections import router as connections_router
 from pwm.api.home import router as home_router
+from pwm.api.people import router as people_router
 from pwm.config import get_settings
 
 
@@ -27,6 +28,7 @@ app.include_router(commitments_router)
 app.include_router(home_router)
 app.include_router(ask_router)
 app.include_router(connections_router)
+app.include_router(people_router)
 
 
 @app.get("/health")

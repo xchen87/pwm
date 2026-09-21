@@ -62,6 +62,8 @@ Open http://localhost:8081 and switch the browser to a phone-sized view (dev too
 **7. The hostile mail (optional, for a technical audience).**
 The mailbox contains ten attacks: "ignore previous instructions", a fake system message, hidden HTML, a forged quoted reply putting words in Alex's mouth, a look-alike of Alex's own address, JSON smuggling, and requests to delete or exfiltrate. None of them produced an item. Run `uv run python -m pwm_eval.run --system heuristic --no-record` and show `injection_clean True`.
 
+**7b. "Is this the same person?"** *Connections and your data* lists Priya's second address as a guess. Read the explanation aloud: anyone can sign a message with someone else's name, so a guessed address cannot change what the known one said. Tap **Yes, that's Priya**. (With the rule-based stand-in her "change of plan" message is not extracted, so Home does not change; with a model-backed extractor the "sources disagree" card becomes a plain "changed". The automated test demonstrates exactly that.)
+
 **8. Your data.** Home → *Connections and your data*. **Disconnect and delete its data** removes all 122 items and everything understood from them — the home screen empties — while the note you typed stays. **Delete everything** returns to "Connect your life".
 
 ## Known gaps you may be asked about
