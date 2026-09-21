@@ -20,10 +20,10 @@ Working constraint (founder, 2026-09-21): reach a showable, demo-ready MVP **wit
 | Phase 0 — scaffolding, fixture, adversarial set, eval harness, threat model | done | commit `0411ba5` |
 | Slice 1 — Commitment Radar | done; independently reviewed, 15 findings fixed | commits `02c1c86` + review-fix commit; verify green |
 | Progress tracking + verify gate + functional journeys + eval regression gate | done | this file; `scripts/verify.sh` |
-| Slice 2 — What changed + World Brief | backend built and tested; app screens next | verify green (99 tests, 46 functional checks) |
-| Slice 3 — Ask Your World + Remember / Correct | not started | |
-| Demo readiness — onboarding flow, demo script, polish | not started | |
-| Slice 4 — accounts, real Gmail/Calendar | not started; live verification **needs founder** (Google OAuth client) | |
+| Slice 2 — What changed + World Brief | built (backend + app); **independent review in progress** | commit `00a624e`; verify green |
+| Slice 3 — Ask Your World + Remember / Correct / Forget | built (backend + app); **independent review in progress** | commit `00a624e`; verify green |
+| Demo readiness — onboarding, connections/disconnect/delete, demo launcher and script, in-browser checks | built | commit `926d450` + next; verify green (122 tests, 87 functional checks incl. the built app in headless Chrome) |
+| Slice 4 — accounts, real Gmail/Calendar | connector protocol, demo connector, Gmail/Calendar payload normalization built and tested; **OAuth, fetching, token storage, accounts need a Google OAuth client — founder** | commit `926d450` |
 | Slice 5 — phone builds, real push | not started; store/TestFlight builds **need founder** (Expo / Apple / Google accounts) | |
 | Live LLM evaluation | blocked: **needs founder** (API key + spend approval) | |
 
@@ -79,3 +79,10 @@ Reviewer confirmed sound: ownership checks, the `user_stated` gate, ingestion id
 **Slice 2 backend.** Demo clock (`PWM_FIXED_NOW`); code-side selection, ranking, de-duplication and per-kind caps of brief items; template writer (no model) that words unconfirmed items as possibilities; briefs, generic-payload notifications (in-app inbox stand-in for push), product events; `/home`, `/visits`, `/briefs`, `/notifications`, `/events`; `pwm.cli brief`. Rule-based extractor extended to priced/dated facts (price changes, premiums, quotes, return windows, appointments) — still a stand-in. Sentence splitting no longer breaks on "Dr.". Same-thread facts with the same predicate are treated as the same matter.
 - Eval (rule-based, synthetic): commitments 0.94 / 1.00; decisions 1.00 / 0.80; facts 1.00 / 0.84 (was 0.52); relations 0.67 / 0.33 (was 0 / 0); temporal 0.44; signal dropped 0.13; injection clean.
 - `scripts/verify.sh`: **ALL GREEN** — 99 backend/eval tests, 7 app tests, 46 functional checks, migration round-trip, web build.
+
+**Slices 2 and 3 — app and Ask.** App: Your World home (what changed with before/after evidence, needs-attention preview, remembered), full needs-attention list, World Brief with "was this useful?", Ask with cited evidence and suggestions, Remember modal, Forget on notes; headings now depend on the kind of fact (a price change is a "possible detail", not a "possible commitment"). Ask: code-only retrieval with intent detection; declines when there is no evidence or when the question names something never seen; low-confidence sources cannot answer. Remember/Forget are user actions with audit events. Brief wording formats dates and money. Eval gained 15 gold questions: `ask_hit_rate` 0.82, `ask_false_answer_rate` 0.00 (the planted-by-attacker question gets no answer); baseline updated to include them. Found by looking at the screens, not by tests: ISO timestamps and bare numbers in headlines; a curly apostrophe ("Dana’s") turned "s" into a search term and caused a refusal — both fixed with tests. Commit `00a624e`.
+
+**Demo readiness.** Connector protocol; demo-mailbox connector (newest first, resumable cursor); Gmail/Calendar payload normalization as pure tested functions; `connections` table and `sources.connector`; sync / disconnect / delete-everything; onboarding screen ("Connect your life") and a "Connections and your data" screen; `scripts/demo.sh` (starts at onboarding; `--loaded`, `--keep`); `docs/demo-script.md`. The functional test now also builds the production web app against the test server and checks in headless Chrome that a new user sees onboarding and that, after connecting, Your World shows a real hedged change with a readable amount. Two process bugs found and fixed along the way: `trap 'kill 0'` in the launcher killed its parent's process group; Metro's cache kept a stale `EXPO_PUBLIC_API_URL` baked into the bundle (`--clear`). Commit `926d450`.
+- `scripts/verify.sh`: **ALL GREEN** — 122 backend/eval tests, 8 app tests, 87 functional checks.
+
+**Slices 2–3 independent review.** Started over `02c1c86..00a624e`. Findings and dispositions will be recorded below.

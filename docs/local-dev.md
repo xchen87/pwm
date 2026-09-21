@@ -64,6 +64,9 @@ This sends the synthetic fixture's text to the provider. Do not point it at the 
 ## Changing the fixture
 Edit `fixtures/generate.py`, then `uv run python fixtures/generate.py`. A test fails if the committed JSON and the generator disagree, and another fails if any gold quote is not literally present in its source.
 
+## A stale API address in the web build
+Metro caches transformed files with `EXPO_PUBLIC_*` values already inlined. After changing `EXPO_PUBLIC_API_URL`, build or start with `--clear`, or the bundle keeps calling the old address.
+
 ## Changing the API
 ```sh
 uv run python -m pwm.api.export_openapi   # writes app/src/api/openapi.json

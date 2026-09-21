@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The regression + functional gate. Run after every major step and before every commit.
-# Usage: scripts/verify.sh [--quick]   (--quick skips the app web build and the functional test)
+# Usage: scripts/verify.sh [--quick]   (--quick skips the functional test, which includes the web build)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.local/bin:$PATH"
@@ -26,9 +26,7 @@ step "app: types, lint, tests"
 (cd app && npx tsc --noEmit && CI=1 npm run -s lint >/dev/null && npm test -s 2>&1 | grep -E "^Tests:")
 
 if [[ "${1:-}" != "--quick" ]]; then
-  step "functional: real server, real database, user journeys"
+  step "functional: real server, real database, user journeys, the built app in a browser"
   uv run python scripts/functional_test.py
-  step "app: production web build"
-  (cd app && CI=1 npx expo export --platform web >/dev/null 2>&1 && ls dist/index.html >/dev/null && echo "web build ok")
 fi
 printf '\nVERIFY: ALL GREEN\n'
