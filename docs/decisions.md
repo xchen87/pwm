@@ -89,3 +89,45 @@ Candidates are matched to gold by source, kind, and evidence-quote overlap (≥ 
 
 ### D18. Commitments have a type
 `promise` (someone said they will do something) and `deadline` (a date by which the user must act: "registration closes", "due by"). AGENT.md's Commitment Radar language covers both and they need different UI wording, so the distinction is in the schema and prompt from the start.
+
+## 2026-09-21 — Slice 1
+
+### D19. The funnel is a pure function; persistence wraps it
+`run_pipeline(sources, user, triager, extractor)` takes records in and returns a reconciled world. The eval harness and production run the same function; the database layer (`pipeline/store.py`) only ingests, caches model-stage results, and writes what the function returns. **Why:** an eval that exercises different code from production measures nothing.
+**Cost:** the funnel currently reprocesses all of a user's sources per job. Model calls are never repeated (D20), so this costs CPU, not money. Revisit with incremental processing when a real mailbox makes it slow.
+
+### D20. Model-stage results are cached per (source, stage, prompt version)
+`stage_results` stores each triage and extraction output. Reprocessing, retries, and new reconciliation rules never re-pay for a call; bumping the prompt version re-extracts deliberately. A test asserts the extractor is not called twice for the same source.
+
+### D21. Evidence is verified against the *visible* text
+Quoted replies, forwarded blocks, and hidden HTML are removed before extraction and before quote verification. A forged "On … you wrote: > I agree to pay" cannot become the user's commitment even if a model is fooled, because the quote is not in what the sender actually wrote. Signatures are kept: they carry real facts (phone numbers).
+
+### D22. Who becomes a Person, and when addresses merge
+A person is created only for a direct relationship: they wrote to the user personally, the user wrote to them, or they share a calendar event. List traffic and bulk senders do not create people.
+Two addresses merge only when the display names are compatible **and** the new address identifies itself with the known person's surname in the message. Nothing ever merges into the user; an address using the user's display name is flagged suspicious. Inferred links are stored as `link = inferred`; user merges/splits are `link = user` and code never overrides them.
+**Residual risk:** an attacker who knows a contact's full name can self-identify as them. The link is visibly inferred and splittable, and their claims still arrive as "possible". An LLM tie-breaker for ambiguous cases is deferred until real data shows the rules are insufficient.
+
+### D23. Reconciliation rules
+Same matter = same kind and predicate, and similar subject (for commitments: same type, same committed party, similar act). A differing later statement from the **same thread or sender** supersedes; a disagreement between **independent sources** is a contradiction, both stay current, and the app says "another source disagrees". On the gold assertions these rules reproduce the fixture's six relations exactly and answer all nine as-of queries (tested).
+This depends on extractors using stable subjects and the predicate vocabulary now listed in the extraction prompt.
+
+### D24. Confidence inputs
+`high`: the user said it, or it is stated outright by the user or someone they correspond with. `medium`: stated outright by an unknown sender, or inferred from a known one. `low`: inferred from an unknown sender, or the source is flagged suspicious (injection markers, or a look-alike of the user). No model-reported number is used.
+
+### D25. Corrections are new assertions
+Edit creates a `user_stated`, `confirmed` assertion that keeps the original evidence quote, marks the original `corrected`, and links them with `supersedes`. The user's own captured words are stored as `confirmed` on arrival; nothing else ever is. Commitment status can only be tracked after confirmation (API returns 409 otherwise).
+
+### D26. A rule-based extractor is the no-credentials adapter
+No model provider credentials exist in this environment, so Slice 1 runs on `HeuristicTriager`/`HeuristicExtractor` behind the same interfaces (AGENT.md: build a local mock adapter and continue). They recognise first-person promises, dated deadlines, "we/I decided", and announced phone numbers — nothing else.
+**Their scores are not evidence of product quality.** The rules and the fixture were written by the same author in the same week; commitment F1 0.97 on the fixture will not survive a real inbox. They are the floor the LLM extractor must beat on the golden set, and the offline demo path.
+
+### D27. Anthropic adapter: written, unit-tested, not yet run live
+`extraction/anthropic_adapter.py` uses `messages.parse` with a Pydantic output model, a frozen system prefix with the cache breakpoint at its end, and per-call usage/cost accounting. Defaults: triage `claude-haiku-4-5`, extraction `claude-opus-5`, both configurable. Tests use a stand-in client and assert the prefix is byte-identical across sources and users and contains no fixture content.
+**Open until a key is available:** real scores, real cost, whether Haiku's larger minimum cacheable prefix means triage calls never cache (likely — the triage prompt is short; options are a longer triage prefix or accepting uncached Haiku calls), and refusal-fallback configuration. The paid eval path requires `--allow-spend`.
+**Dependency added:** `anthropic` (official SDK), imported only by the adapter and the factory.
+
+### D28. Typed routes disabled in the app
+Expo's typed routes rely on a generated, gitignored file that only the dev server refreshes, which made `tsc` fail on a clean checkout after adding screens. Turned off; a deterministic type check matters more at this size. Revisit when there are enough routes for typos to be a real risk.
+
+### D29. Mock connector stores message bodies
+`sources.record` holds the full normalized record, including the body, because the fixture has nowhere to re-fetch from. D9's posture (quotes stored, bodies re-fetched) is implemented with the real Gmail connector in Slice 4; the column is documented as temporary.

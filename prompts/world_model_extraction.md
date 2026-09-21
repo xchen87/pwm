@@ -2,10 +2,11 @@
 
 ## Maintainer notes (not sent to the model)
 
-- Prompt version: `extraction-v0`. Bump on any change to the system prompt, schema, or examples; the version is stored on every assertion and is part of the job idempotency key.
-- This file is the **frozen cacheable prefix**: system prompt → JSON schema → few-shot examples, in that order, byte-stable. The cache breakpoint goes after the last example.
-- Nothing volatile may appear in the prefix: no current date, user name, user ID, or source text. Those go in the user message, after the breakpoint.
-- The few-shot examples are added in Slice 1 from `fixtures/` (including near-miss negatives and one injection example). They must bring the prefix above the minimum cacheable length of the model used for this stage; below it, caching silently does nothing. Verify with `cache_read_input_tokens`.
+- Prompt version: `extraction-v1` (`PROMPT_VERSION` in `backend/src/pwm/extraction/prompts.py`). Bump on any change to the system prompt, schema, or examples; the version is stored on every assertion and keys the stage-result cache, so a bump re-extracts everything.
+- The **frozen cacheable prefix** is assembled by `prompts.py` in this order, byte-stable: the "System prompt" section of this file → the JSON schema of the output model (sorted keys) → `prompts/extraction_examples.json`. The cache breakpoint sits at the end of that prefix.
+- Nothing volatile may appear in the prefix: no current date, user name, user ID, or source text. Those go in the user message, after the breakpoint. A test asserts the prefix is identical across different sources and users.
+- The examples are invented and **must never be taken from `fixtures/`**: the fixture is the regression suite, and examples drawn from it would be training on the test.
+- Minimum cacheable prefix length depends on the model. Verify with `cache_read_input_tokens` on the second call; zero means the prefix is too short or something in it varies.
 - The model called with this prompt has no tools and returns schema-validated JSON only.
 - The model does **not** decide review state, validity, contradiction, or confidence. Those belong to the user and to code (TECHNICAL_BRIEF §4).
 
@@ -23,6 +24,12 @@ Extract only what the source supports. For each candidate provide:
 - `valid_from`, `valid_to`: only when the source gives or clearly implies them; otherwise null
 - for commitments: `commitment_type` (`promise` when someone says they will do something; `deadline` when the source states a date by which the user must act), `committed_by`, `committed_to`, `due` (null if not stated), and `direction` (by_user | to_user | between_others)
 
+Formats, so that code can compare facts over time:
+- `predicate` comes from this list where one fits: `date` (when an event happens), `phone`, `email`, `address`, `quote` (a price quoted for work), `monthly_price`, `monthly_rent`, `annual_premium`, `return_window_ends`, `expires`, `lent_to`, `decided`, `committed_to`, `deadline`. Otherwise use a short snake_case word.
+- `subject` names the thing itself, the same way each time it appears: "Eye exam with Dr. Amari", not "your appointment" or "the rescheduled visit".
+- Dates are `YYYY-MM-DD`; date-times are `YYYY-MM-DDTHH:MM`. Resolve relative expressions ("by Friday", "the 18th") against the message date given in the user message. Money is a plain number without currency symbols or separators.
+- For a commitment, `value` is a short plain description of the act ("return the signed lease"), not the quote.
+
 Rules:
 - When evidence is ambiguous, mark the candidate `inferred` and keep it, or leave it out. Do not guess to fill fields.
 - Hypotheticals, wishes, pleasantries, and offers without intent are not commitments ("we should catch up sometime").
@@ -33,8 +40,8 @@ Rules:
 
 ## Output schema
 
-Defined in code: `Candidate` in `backend/src/pwm/extraction/candidates.py`. Slice 1 renders its JSON schema here deterministically at build time.
+`ExtractionOutput` in `backend/src/pwm/extraction/prompts.py`, rendered into the prefix as JSON with sorted keys.
 
 ## Few-shot examples
 
-Added in Slice 1 from `fixtures/`.
+`prompts/extraction_examples.json`. They cover: a first-person promise with a relative date, a promise quoted in a reply (extract nothing from the quote), wishes and hypotheticals (extract nothing), an automated price change, a dated deadline, a decision with its rationale, and a message carrying injected instructions next to one legitimate fact.

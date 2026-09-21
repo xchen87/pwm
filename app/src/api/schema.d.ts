@@ -4,6 +4,111 @@
  */
 
 export interface paths {
+    "/commitments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Needs Attention
+         * @description Open commitments not yet dismissed: unreviewed ones to confirm, confirmed ones to do.
+         */
+        get: operations["needs_attention_commitments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assertions/{assertion_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inspect */
+        get: operations["inspect_assertions__assertion_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assertions/{assertion_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm */
+        post: operations["confirm_assertions__assertion_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assertions/{assertion_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss */
+        post: operations["dismiss_assertions__assertion_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assertions/{assertion_id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct */
+        post: operations["correct_assertions__assertion_id__correct_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assertions/{assertion_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Status */
+        post: operations["set_status_assertions__assertion_id__status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -25,10 +130,171 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AssertionDetail */
+        AssertionDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** What */
+            what: string;
+            /** Commitment Type */
+            commitment_type: string | null;
+            /** Direction */
+            direction: string | null;
+            /** Committed By */
+            committed_by: string | null;
+            /** Committed To */
+            committed_to: string | null;
+            /** Due */
+            due: string | null;
+            /** Overdue */
+            overdue: boolean;
+            /** Status */
+            status: string | null;
+            /** Origin */
+            origin: string;
+            /** Review */
+            review: string;
+            /** Confidence */
+            confidence: string;
+            /** Evidence Quote */
+            evidence_quote: string;
+            /** Has Conflict */
+            has_conflict: boolean;
+            source: components["schemas"]["SourceSummary"];
+            /** Kind */
+            kind: string;
+            /** Subject */
+            subject: string;
+            /** Predicate */
+            predicate: string;
+            /** Extraction Method */
+            extraction_method: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Context */
+            context: string;
+            /** Source Suspicious */
+            source_suspicious: boolean;
+            /** Related */
+            related: components["schemas"]["RelatedAssertion"][];
+        };
+        /** CommitmentItem */
+        CommitmentItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** What */
+            what: string;
+            /** Commitment Type */
+            commitment_type: string | null;
+            /** Direction */
+            direction: string | null;
+            /** Committed By */
+            committed_by: string | null;
+            /** Committed To */
+            committed_to: string | null;
+            /** Due */
+            due: string | null;
+            /** Overdue */
+            overdue: boolean;
+            /** Status */
+            status: string | null;
+            /** Origin */
+            origin: string;
+            /** Review */
+            review: string;
+            /** Confidence */
+            confidence: string;
+            /** Evidence Quote */
+            evidence_quote: string;
+            /** Has Conflict */
+            has_conflict: boolean;
+            source: components["schemas"]["SourceSummary"];
+        };
+        /** Correction */
+        Correction: {
+            /** What */
+            what?: string | null;
+            /** Due */
+            due?: string | null;
+            /**
+             * Clear Due
+             * @default false
+             */
+            clear_due: boolean;
+            /** Committed By */
+            committed_by?: string | null;
+            /** Committed To */
+            committed_to?: string | null;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
         /** Health */
         Health: {
             /** Status */
             status: string;
+        };
+        /** RelatedAssertion */
+        RelatedAssertion: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Relation */
+            relation: string;
+            /** What */
+            what: string;
+            /** Due */
+            due: string | null;
+            /** Evidence Quote */
+            evidence_quote: string;
+            source: components["schemas"]["SourceSummary"];
+        };
+        /** SourceSummary */
+        SourceSummary: {
+            /** Kind */
+            kind: string;
+            /** Sender Name */
+            sender_name: string | null;
+            /** Sender Address */
+            sender_address: string | null;
+            /** Subject */
+            subject: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+        };
+        /** StatusChange */
+        StatusChange: {
+            /** Status */
+            status: string;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
     };
     responses: never;
@@ -39,6 +305,189 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    needs_attention_commitments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommitmentItem"][];
+                };
+            };
+        };
+    };
+    inspect_assertions__assertion_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssertionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_assertions__assertion_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssertionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_assertions__assertion_id__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssertionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_assertions__assertion_id__correct_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Correction"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssertionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_status_assertions__assertion_id__status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatusChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssertionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_health_get: {
         parameters: {
             query?: never;

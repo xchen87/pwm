@@ -40,8 +40,11 @@ flowchart TD
 | Path | Contents |
 |---|---|
 | `backend/src/pwm/sources.py` | `SourceRecord`: what connectors produce and the pipeline consumes |
-| `backend/src/pwm/extraction/` | `Candidate` schema, the `Extractor` protocol, quote verification |
-| `backend/src/pwm/api/` | FastAPI app and OpenAPI export |
+| `backend/src/pwm/extraction/` | `Candidate` schema, `Triager`/`Extractor` protocols, quote verification, prompt assembly, the Anthropic adapter, provider factory |
+| `backend/src/pwm/pipeline/` | the funnel: `prefilter`, `text` (visible text), `heuristic` (rule-based stages), `resolution` (people), `world` (reconcile, confidence, as-of), `core` (pure orchestration), `store` (persistence + stage cache), `worker` (jobs) |
+| `backend/src/pwm/review.py` | confirm / dismiss / correct / status, merge / split people — the only writer of `review` |
+| `backend/src/pwm/db/` | SQLAlchemy models and session |
+| `backend/src/pwm/api/` | FastAPI app: commitments list, assertion inspection, review actions, OpenAPI export |
 | `backend/migrations/` | Alembic migrations |
 | `eval/pwm_eval/` | gold label schema, metrics, systems under test, runner, golden-set labeller |
 | `fixtures/generate.py` | deterministic generator for `fixtures/synthetic/` |

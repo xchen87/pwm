@@ -41,7 +41,7 @@ def test_fixture_meets_the_plan_minimums() -> None:
     categories = Counter(GOLD.categories.values())
     assert categories[SourceCategory.NOISE] >= 60
     assert categories[SourceCategory.ADVERSARIAL] >= 10
-    assert len(GOLD.people) == 10
+    assert len(GOLD.people) >= 10
     assert sum(len(p.addresses) > 1 for p in GOLD.people) >= 2
 
     promises = [a for a in GOLD.assertions if a.commitment_type is CommitmentType.PROMISE]

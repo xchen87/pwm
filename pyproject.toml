@@ -11,6 +11,7 @@ dependencies = [
     "sqlalchemy>=2.0",
     "alembic>=1.13",
     "psycopg[binary]>=3.2",
+    "anthropic>=0.80",
 ]
 
 [dependency-groups]
@@ -43,6 +44,7 @@ known-first-party = ["pwm", "pwm_eval"]
 
 [tool.ruff.lint.per-file-ignores]
 "fixtures/*.py" = ["E501"]
+"backend/migrations/versions/*.py" = ["E501", "I001"]
 
 [tool.mypy]
 python_version = "3.12"

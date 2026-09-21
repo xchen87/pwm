@@ -13,7 +13,8 @@ FIXTURE = load_fixture()
 def test_oracle_scores_perfectly() -> None:
     report = evaluate(OracleSystem(FIXTURE.gold), FIXTURE)
     for block in (report.commitments, report.decisions, report.facts,
-                  report.people_addresses, report.people_resolution_pairs):  # fmt: skip
+                  report.people_addresses, report.people_resolution_pairs,
+                  report.relations):  # fmt: skip
         assert (block.precision, block.recall) == (1.0, 1.0)
     assert report.commitment_direction_accuracy == 1.0
     assert report.commitment_due_accuracy == 1.0

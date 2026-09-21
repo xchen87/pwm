@@ -40,6 +40,7 @@ class Report(BaseModel):
     facts: PrecisionRecall
     people_addresses: PrecisionRecall
     people_resolution_pairs: PrecisionRecall
+    relations: PrecisionRecall
     temporal_accuracy: float | None
     quote_verification_pass_rate: float | None
     noise_reaching_model_rate: float | None
@@ -150,9 +151,28 @@ def evaluate(system: SystemUnderTest, fixture: Fixture) -> Report:
     facts, _ = score(FACT_KINDS)
 
     gold_addresses = {a.lower() for p in gold.people for a in p.addresses}
-    predicted_addresses = {a.lower() for p in output.people for a in p.addresses}
+    # Whether an attacker counts as a "person" is not what this metric measures.
+    attacker_addresses = {
+        s.sender.address.lower()
+        for s in fixture.sources
+        if s.sender and gold.categories[s.id] is SourceCategory.ADVERSARIAL
+    } - gold_addresses
+    predicted_addresses = {
+        a.lower() for p in output.people for a in p.addresses
+    } - attacker_addresses
     gold_pairs = _pairs(p.addresses for p in gold.people)
     predicted_pairs = _pairs(p.addresses for p in output.people)
+
+    all_pairs = match(candidates, gold.assertions)
+    gold_id_of = {(p.source_id, p.evidence_quote, p.kind): g.id for p, g in all_pairs}
+
+    def gold_id(candidate: Candidate) -> str | None:
+        return gold_id_of.get((candidate.source_id, candidate.evidence_quote, candidate.kind))
+
+    predicted_relations = {
+        (r.type, gold_id(r.from_candidate), gold_id(r.to_candidate)) for r in output.relations
+    }
+    gold_relations = {(r.type.value, r.from_id, r.to_id) for r in gold.relations}
 
     temporal_correct = sum(
         1
@@ -198,6 +218,9 @@ def evaluate(system: SystemUnderTest, fixture: Fixture) -> Report:
         ),
         people_resolution_pairs=precision_recall(
             len(gold_pairs & predicted_pairs), len(predicted_pairs), len(gold_pairs)
+        ),
+        relations=precision_recall(
+            len(gold_relations & predicted_relations), len(predicted_relations), len(gold_relations)
         ),
         temporal_accuracy=ratio(temporal_correct, len(gold.temporal_queries)),
         quote_verification_pass_rate=ratio(

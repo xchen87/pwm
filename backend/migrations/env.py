@@ -4,12 +4,12 @@ from alembic import context
 from sqlalchemy import create_engine
 
 from pwm.config import get_settings
+from pwm.db.models import Base
 
 if context.config.config_file_name:
     fileConfig(context.config.config_file_name)
 
-# Table metadata arrives with the domain model in Slice 1.
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def run_migrations() -> None:

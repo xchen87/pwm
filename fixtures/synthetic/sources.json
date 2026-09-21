@@ -832,8 +832,8 @@
     },
     "recipients": [
       {
-        "name": "Alex Rivera",
-        "address": "alex.rivera@example.com"
+        "name": "All Staff",
+        "address": "all-staff@brightwave.example"
       }
     ],
     "subject": "Re: Welcome Devon!",
@@ -1057,8 +1057,8 @@
     },
     "recipients": [
       {
-        "name": "Alex Rivera",
-        "address": "alex.rivera@example.com"
+        "name": "All Staff",
+        "address": "all-staff@brightwave.example"
       }
     ],
     "subject": "Re: Welcome Devon!",
@@ -1339,8 +1339,8 @@
     },
     "recipients": [
       {
-        "name": "Alex Rivera",
-        "address": "alex.rivera@example.com"
+        "name": "All Staff",
+        "address": "all-staff@brightwave.example"
       }
     ],
     "subject": "Re: Kitchen fridge cleanout",
@@ -1685,8 +1685,8 @@
     },
     "recipients": [
       {
-        "name": "Alex Rivera",
-        "address": "alex.rivera@example.com"
+        "name": "All Staff",
+        "address": "all-staff@brightwave.example"
       }
     ],
     "subject": "Elevator maintenance Thursday",
@@ -1914,8 +1914,8 @@
     },
     "recipients": [
       {
-        "name": "Alex Rivera",
-        "address": "alex.rivera@example.com"
+        "name": "All Staff",
+        "address": "all-staff@brightwave.example"
       }
     ],
     "subject": "Re: Lunch order",
@@ -2314,8 +2314,8 @@
     },
     "recipients": [
       {
-        "name": "Alex Rivera",
-        "address": "alex.rivera@example.com"
+        "name": "All Staff",
+        "address": "all-staff@brightwave.example"
       }
     ],
     "subject": "Found: grey scarf in lobby",
@@ -2546,8 +2546,8 @@
     },
     "recipients": [
       {
-        "name": "Alex Rivera",
-        "address": "alex.rivera@example.com"
+        "name": "All Staff",
+        "address": "all-staff@brightwave.example"
       }
     ],
     "subject": "Fwd: funny chart",
@@ -2804,8 +2804,8 @@
     },
     "recipients": [
       {
-        "name": "Alex Rivera",
-        "address": "alex.rivera@example.com"
+        "name": "All Staff",
+        "address": "all-staff@brightwave.example"
       }
     ],
     "subject": "OOO next Friday",

@@ -35,11 +35,20 @@ class ResolvedPerson(BaseModel):
     addresses: tuple[str, ...]
 
 
+class PredictedRelation(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    type: str
+    from_candidate: Candidate
+    to_candidate: Candidate
+
+
 class SystemOutput(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     traces: tuple[SourceTrace, ...]
     people: tuple[ResolvedPerson, ...] = ()
+    relations: tuple[PredictedRelation, ...] = ()
 
 
 class SystemUnderTest(Protocol):
@@ -90,7 +99,17 @@ class OracleSystem:
         people = tuple(
             ResolvedPerson(name=p.name, addresses=p.addresses) for p in self._gold.people
         )
-        return SystemOutput(traces=tuple(traces), people=people)
+        by_id = {
+            a.id: Candidate.model_validate(a.model_dump(exclude={"id", "validity"}))
+            for a in self._gold.assertions
+        }
+        relations = tuple(
+            PredictedRelation(
+                type=r.type.value, from_candidate=by_id[r.from_id], to_candidate=by_id[r.to_id]
+            )
+            for r in self._gold.relations
+        )
+        return SystemOutput(traces=tuple(traces), people=people, relations=relations)
 
     def as_of(self, subject: str, predicate: str, when: date) -> str | None:
         for q in self._gold.temporal_queries:

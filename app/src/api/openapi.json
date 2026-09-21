@@ -5,6 +5,249 @@
     "version": "0.0.1"
   },
   "paths": {
+    "/commitments": {
+      "get": {
+        "summary": "Needs Attention",
+        "description": "Open commitments not yet dismissed: unreviewed ones to confirm, confirmed ones to do.",
+        "operationId": "needs_attention_commitments_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CommitmentItem"
+                  },
+                  "type": "array",
+                  "title": "Response Needs Attention Commitments Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assertions/{assertion_id}": {
+      "get": {
+        "summary": "Inspect",
+        "operationId": "inspect_assertions__assertion_id__get",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assertion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssertionDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assertions/{assertion_id}/confirm": {
+      "post": {
+        "summary": "Confirm",
+        "operationId": "confirm_assertions__assertion_id__confirm_post",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assertion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssertionDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assertions/{assertion_id}/dismiss": {
+      "post": {
+        "summary": "Dismiss",
+        "operationId": "dismiss_assertions__assertion_id__dismiss_post",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assertion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssertionDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assertions/{assertion_id}/correct": {
+      "post": {
+        "summary": "Correct",
+        "operationId": "correct_assertions__assertion_id__correct_post",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assertion Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Correction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssertionDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assertions/{assertion_id}/status": {
+      "post": {
+        "summary": "Set Status",
+        "operationId": "set_status_assertions__assertion_id__status_post",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assertion Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssertionDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -26,6 +269,371 @@
   },
   "components": {
     "schemas": {
+      "AssertionDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "what": {
+            "type": "string",
+            "title": "What"
+          },
+          "commitment_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commitment Type"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "committed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed By"
+          },
+          "committed_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed To"
+          },
+          "due": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due"
+          },
+          "overdue": {
+            "type": "boolean",
+            "title": "Overdue"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "origin": {
+            "type": "string",
+            "title": "Origin"
+          },
+          "review": {
+            "type": "string",
+            "title": "Review"
+          },
+          "confidence": {
+            "type": "string",
+            "title": "Confidence"
+          },
+          "evidence_quote": {
+            "type": "string",
+            "title": "Evidence Quote"
+          },
+          "has_conflict": {
+            "type": "boolean",
+            "title": "Has Conflict"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceSummary"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "predicate": {
+            "type": "string",
+            "title": "Predicate"
+          },
+          "extraction_method": {
+            "type": "string",
+            "title": "Extraction Method"
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Recorded At"
+          },
+          "context": {
+            "type": "string",
+            "title": "Context"
+          },
+          "source_suspicious": {
+            "type": "boolean",
+            "title": "Source Suspicious"
+          },
+          "related": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedAssertion"
+            },
+            "type": "array",
+            "title": "Related"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "what",
+          "commitment_type",
+          "direction",
+          "committed_by",
+          "committed_to",
+          "due",
+          "overdue",
+          "status",
+          "origin",
+          "review",
+          "confidence",
+          "evidence_quote",
+          "has_conflict",
+          "source",
+          "kind",
+          "subject",
+          "predicate",
+          "extraction_method",
+          "recorded_at",
+          "context",
+          "source_suspicious",
+          "related"
+        ],
+        "title": "AssertionDetail"
+      },
+      "CommitmentItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "what": {
+            "type": "string",
+            "title": "What"
+          },
+          "commitment_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commitment Type"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "committed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed By"
+          },
+          "committed_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed To"
+          },
+          "due": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due"
+          },
+          "overdue": {
+            "type": "boolean",
+            "title": "Overdue"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "origin": {
+            "type": "string",
+            "title": "Origin"
+          },
+          "review": {
+            "type": "string",
+            "title": "Review"
+          },
+          "confidence": {
+            "type": "string",
+            "title": "Confidence"
+          },
+          "evidence_quote": {
+            "type": "string",
+            "title": "Evidence Quote"
+          },
+          "has_conflict": {
+            "type": "boolean",
+            "title": "Has Conflict"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceSummary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "what",
+          "commitment_type",
+          "direction",
+          "committed_by",
+          "committed_to",
+          "due",
+          "overdue",
+          "status",
+          "origin",
+          "review",
+          "confidence",
+          "evidence_quote",
+          "has_conflict",
+          "source"
+        ],
+        "title": "CommitmentItem"
+      },
+      "Correction": {
+        "properties": {
+          "what": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "What"
+          },
+          "due": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due"
+          },
+          "clear_due": {
+            "type": "boolean",
+            "title": "Clear Due",
+            "default": false
+          },
+          "committed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed By"
+          },
+          "committed_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed To"
+          }
+        },
+        "type": "object",
+        "title": "Correction"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
       "Health": {
         "properties": {
           "status": {
@@ -38,6 +646,153 @@
           "status"
         ],
         "title": "Health"
+      },
+      "RelatedAssertion": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "relation": {
+            "type": "string",
+            "title": "Relation"
+          },
+          "what": {
+            "type": "string",
+            "title": "What"
+          },
+          "due": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due"
+          },
+          "evidence_quote": {
+            "type": "string",
+            "title": "Evidence Quote"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceSummary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "relation",
+          "what",
+          "due",
+          "evidence_quote",
+          "source"
+        ],
+        "title": "RelatedAssertion"
+      },
+      "SourceSummary": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "sender_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Name"
+          },
+          "sender_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Address"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Observed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "sender_name",
+          "sender_address",
+          "subject",
+          "observed_at"
+        ],
+        "title": "SourceSummary"
+      },
+      "StatusChange": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "StatusChange"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
       }
     }
   }

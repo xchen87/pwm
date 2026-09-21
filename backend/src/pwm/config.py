@@ -8,6 +8,13 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://pwm:pwm@localhost:5433/pwm"
     environment: str = "local"
+    # Local development identity; matches the synthetic fixture. Replaced by real auth in Slice 4.
+    dev_user_email: str = "alex.rivera@example.com"
+    dev_user_name: str = "Alex Rivera"
+    # "heuristic" needs no credentials. "anthropic" sends source text to the provider.
+    extractor: str = "heuristic"
+    triage_model: str = "claude-haiku-4-5"
+    extraction_model: str = "claude-opus-5"
     cors_origins: list[str] = ["http://localhost:8081", "http://localhost:19006"]
 
 

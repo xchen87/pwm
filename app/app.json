@@ -26,9 +26,6 @@
       "expo-router",
       "expo-status-bar"
     ],
-    "scheme": "pwm",
-    "experiments": {
-      "typedRoutes": true
-    }
+    "scheme": "pwm"
   }
 }

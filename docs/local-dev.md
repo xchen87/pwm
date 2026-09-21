@@ -13,6 +13,7 @@ Everything runs on a PC. The app you open in the browser or emulator is the same
 uv sync                                   # create .venv and install dependencies
 docker compose up -d --wait db            # Postgres + pgvector on localhost:5433
 uv run alembic upgrade head               # apply migrations
+uv run python -m pwm.cli demo             # load the synthetic mailbox for the local user and process it
 uv run uvicorn pwm.api.main:app --reload  # API on http://localhost:8000
 ```
 
@@ -33,9 +34,25 @@ cd app && npm run typecheck && npm run lint && npm test
 
 ## Evaluation
 ```sh
+uv run python -m pwm_eval.run --system heuristic   # the real funnel with rule-based stages
 uv run python -m pwm_eval.run                     # baseline on the synthetic fixture; appends to eval/results/history.jsonl
 uv run python -m pwm_eval.run --system oracle --no-record   # sanity check: must be all 1.00
 ```
+
+## Resetting local data
+```sh
+uv run python -m pwm.cli reset   # deletes the local user; everything derived cascades
+uv run python -m pwm.cli demo
+```
+Database tests use a separate `pwm_test` database on the same Postgres and are skipped if it is not running.
+
+## Using a real model
+```sh
+export ANTHROPIC_API_KEY=...            # never commit this
+uv run python -m pwm_eval.run --system anthropic --allow-spend   # paid: one or two calls per non-noise source
+PWM_EXTRACTOR=anthropic uv run python -m pwm.cli demo
+```
+This sends the synthetic fixture's text to the provider. Do not point it at the golden set until the provider terms in `docs/decisions.md` D9 are confirmed.
 
 ## Changing the fixture
 Edit `fixtures/generate.py`, then `uv run python fixtures/generate.py`. A test fails if the committed JSON and the generator disagree, and another fails if any gold quote is not literally present in its source.
