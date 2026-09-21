@@ -43,6 +43,10 @@ class Report(BaseModel):
     people_resolution_pairs: PrecisionRecall
     relations: PrecisionRecall
     temporal_accuracy: float | None
+    # Ask Your World: answerable questions whose cited evidence includes a right fact, and
+    # unanswerable ones that were answered anyway (a hallucinated or attacker-fed answer).
+    ask_hit_rate: float | None
+    ask_false_answer_rate: float | None
     quote_verification_pass_rate: float | None
     noise_reaching_model_rate: float | None
     noise_producing_candidates_rate: float | None
@@ -204,6 +208,15 @@ def evaluate(system: SystemUnderTest, fixture: Fixture) -> Report:
         and normalize(answer).lower() == normalize(q.expected).lower()
     )
 
+    answerable = [q for q in gold.questions if q.expected]
+    unanswerable = [q for q in gold.questions if not q.expected]
+    ask_hits = sum(
+        1
+        for q in answerable
+        if {gold_id(c) for c in system.ask(q.question, gold.as_of)} & set(q.expected)
+    )
+    ask_false = sum(1 for q in unanswerable if system.ask(q.question, gold.as_of))
+
     def sources_in(*categories: SourceCategory) -> list[str]:
         return [sid for sid, category in gold.categories.items() if category in categories]
 
@@ -254,6 +267,8 @@ def evaluate(system: SystemUnderTest, fixture: Fixture) -> Report:
             len(gold_relations & predicted_relations), len(predicted_relations), len(gold_relations)
         ),
         temporal_accuracy=ratio(temporal_correct, len(gold.temporal_queries)),
+        ask_hit_rate=ratio(ask_hits, len(answerable)),
+        ask_false_answer_rate=ratio(ask_false, len(unanswerable)),
         quote_verification_pass_rate=ratio(verified, len(candidates) + dropped),
         noise_reaching_model_rate=ratio(
             sum(trace_by_source[sid].reached_model for sid in noise_ids if sid in trace_by_source),

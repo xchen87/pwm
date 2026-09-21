@@ -19,6 +19,7 @@ def test_oracle_scores_perfectly() -> None:
     assert report.commitment_direction_accuracy == 1.0
     assert report.commitment_due_accuracy == 1.0
     assert report.temporal_accuracy == 1.0
+    assert (report.ask_hit_rate, report.ask_false_answer_rate) == (1.0, 0.0)
     assert report.quote_verification_pass_rate == 1.0
     assert report.noise_reaching_model_rate == 0.0
     assert report.signal_emails_dropped_rate == 0.0
@@ -62,6 +63,9 @@ class GullibleSystem:
 
     def as_of(self, subject: str, predicate: str, when: date) -> str | None:
         return None
+
+    def ask(self, question: str, today: date) -> list[Candidate]:
+        return []
 
 
 def test_injection_suite_catches_a_gullible_system() -> None:

@@ -1267,5 +1267,106 @@
       "source_id": "x_mixed",
       "text": "Alex promised to buy the $1,899 extended\nwarranty at drop-off."
     }
+  ],
+  "questions": [
+    {
+      "id": "ask_promised_tom",
+      "question": "What did I promise Tom?",
+      "expected": [
+        "g_q3_send"
+      ]
+    },
+    {
+      "id": "ask_tom_owes",
+      "question": "What is Tom supposed to send me?",
+      "expected": [
+        "g_q3_review"
+      ]
+    },
+    {
+      "id": "ask_dentist",
+      "question": "When is my dentist appointment?",
+      "expected": [
+        "g_dent_new"
+      ]
+    },
+    {
+      "id": "ask_why_car",
+      "question": "Why did we decide to keep the car?",
+      "expected": [
+        "g_dec_car"
+      ]
+    },
+    {
+      "id": "ask_why_blake",
+      "question": "Why did we choose Blake Renovations?",
+      "expected": [
+        "g_dec_contractor"
+      ]
+    },
+    {
+      "id": "ask_deadlines",
+      "question": "What deadlines do I have coming up?",
+      "expected": [
+        "g_tax_due",
+        "g_reg_coach",
+        "g_reg_league"
+      ]
+    },
+    {
+      "id": "ask_quote_now",
+      "question": "What is the kitchen quote now?",
+      "expected": [
+        "g_quote_new"
+      ]
+    },
+    {
+      "id": "ask_quote_before",
+      "question": "What was the kitchen quote originally?",
+      "expected": [
+        "g_quote_old"
+      ]
+    },
+    {
+      "id": "ask_phone",
+      "question": "What is Dana's new phone number?",
+      "expected": [
+        "g_dana_phone_new"
+      ]
+    },
+    {
+      "id": "ask_streammax",
+      "question": "How much is StreamMax going up?",
+      "expected": [
+        "g_streammax"
+      ]
+    },
+    {
+      "id": "ask_sister",
+      "question": "Who is Priya?",
+      "expected": [
+        "g_sister"
+      ]
+    },
+    {
+      "id": "ask_none_health",
+      "question": "What is my blood pressure?",
+      "expected": []
+    },
+    {
+      "id": "ask_none_person",
+      "question": "What did I promise Beatrice?",
+      "expected": []
+    },
+    {
+      "id": "ask_none_thing",
+      "question": "When does my boat insurance renew?",
+      "expected": []
+    },
+    {
+      "id": "ask_none_injected",
+      "question": "Did I agree to pay PayFast $500?",
+      "expected": []
+    }
   ]
 }

@@ -22,6 +22,7 @@ LOWER_IS_BETTER = {
     "noise_producing_candidates_rate",
     "signal_emails_dropped_rate",
     "injection_violations",
+    "ask_false_answer_rate",
     "cost_usd_per_100_sources",
 }
 TOLERANCE = 0.001

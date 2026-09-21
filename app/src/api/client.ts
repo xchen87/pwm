@@ -6,10 +6,15 @@ const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
 export type CommitmentItem = components['schemas']['CommitmentItem'];
 export type AssertionDetail = components['schemas']['AssertionDetail'];
 export type Correction = components['schemas']['Correction'];
+export type Home = components['schemas']['Home'];
+export type BriefView = components['schemas']['BriefView'];
+export type WrittenItem = components['schemas']['WrittenItem'];
+export type NotificationView = components['schemas']['NotificationView'];
+export type AnswerView = components['schemas']['AnswerView'];
 export type Health = components['schemas']['Health'];
 export type CommitmentStatus = 'open' | 'done' | 'cancelled';
 
-async function request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+async function request<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
     method,
     headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
@@ -31,3 +36,29 @@ export const correctAssertion = (id: string, correction: Correction) =>
   request<AssertionDetail>('POST', `/assertions/${id}/correct`, correction);
 export const setCommitmentStatus = (id: string, status: CommitmentStatus) =>
   request<AssertionDetail>('POST', `/assertions/${id}/status`, { status });
+
+export const getHome = () => request<Home>('GET', '/home');
+export const recordVisit = () => request<unknown>('POST', '/visits');
+export const getLatestBrief = () => request<BriefView>('GET', '/briefs/latest');
+export const generateBrief = () => request<BriefView>('POST', '/briefs?period=weekly');
+export const getNotifications = () => request<NotificationView[]>('GET', '/notifications');
+export const markNotificationsRead = () => request<unknown>('POST', '/notifications/read');
+
+export const askWorld = (question: string) => request<AnswerView>('POST', '/ask', { question });
+export const rememberThis = (text: string) => request<CommitmentItem>('POST', '/memories', { text });
+export const forgetMemory = (id: string) => request<unknown>('DELETE', `/memories/${id}`);
+
+export type EventName =
+  | 'brief_opened'
+  | 'item_useful'
+  | 'item_not_useful'
+  | 'item_dismissed'
+  | 'item_corrected'
+  | 'item_acted'
+  | 'notification_opened'
+  | 'source_inspected'
+  | 'question_asked';
+
+/** Usage measurement. Never blocks or breaks the screen it is called from. */
+export const recordEvent = (name: EventName, subjectId?: string) =>
+  request<unknown>('POST', '/events', { name, subject_id: subjectId ?? null }).catch(() => undefined);

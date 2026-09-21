@@ -5,7 +5,7 @@ from authenticated API calls made by the user. Every action leaves a ReviewEvent
 """
 
 from datetime import date
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
@@ -17,8 +17,12 @@ from pwm.db.models import (
     Person,
     PersonIdentifier,
     ReviewEvent,
+    Source,
     User,
 )
+from pwm.extraction.interface import Extractor, Triager
+from pwm.pipeline.store import delete_sources, ingest, process_user
+from pwm.sources import Party, SourceKind, SourceRecord
 
 COMMITMENT_STATUSES = {"open", "done", "cancelled"}
 
@@ -163,3 +167,40 @@ def rename_person(session: Session, user: User, person_id: UUID, name: str) -> P
     person = _person(session, user, person_id)
     person.display_name = name
     return person
+
+
+def remember(
+    session: Session, user: User, text: str, triager: Triager, extractor: Extractor
+) -> Assertion:
+    """Store a note the user typed. This is a user action, so the verbatim memory is
+    confirmed here, with an audit event; interpretations of it are not."""
+    text = text.strip()
+    if not text or "\x00" in text:
+        raise ValueError("there is nothing to remember")
+    record = SourceRecord(
+        id=f"capture:{uuid4()}",
+        kind=SourceKind.USER_CAPTURE,
+        observed_at=clock.now(),
+        sender=Party(name=user.name, address=user.email),
+        body=text,
+    )
+    ingest(session, user, [record])
+    process_user(session, user, triager, extractor)
+    memory = session.scalars(
+        select(Assertion)
+        .join(Source, Assertion.source_id == Source.id)
+        .where(Source.external_id == record.id, Assertion.kind == "memory")
+    ).one()
+    memory.review = "confirmed"
+    _log(session, user, memory, "remember")
+    return memory
+
+
+def forget(
+    session: Session, user: User, assertion_id: UUID, triager: Triager, extractor: Extractor
+) -> None:
+    """Delete a note and everything that was understood from it."""
+    memory = _owned(session, user, assertion_id)
+    if memory.kind != "memory":
+        raise LookupError(str(assertion_id))
+    delete_sources(session, user, [memory.source.external_id], triager, extractor)

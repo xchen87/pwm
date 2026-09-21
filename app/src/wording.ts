@@ -2,7 +2,7 @@ import type { CommitmentItem } from './api/client';
 
 type Worded = Pick<
   CommitmentItem,
-  'review' | 'origin' | 'commitment_type' | 'direction' | 'committed_by' | 'committed_to' | 'due' | 'overdue'
+  'kind' | 'review' | 'origin' | 'commitment_type' | 'direction' | 'committed_by' | 'committed_to' | 'due' | 'overdue'
 >;
 
 /**
@@ -13,12 +13,22 @@ export function isFact(item: Pick<CommitmentItem, 'review'>): boolean {
   return item.review === 'confirmed';
 }
 
+const NOUN: Record<string, string> = {
+  commitment: 'commitment',
+  event: 'date',
+  thing: 'detail',
+  person: 'contact detail',
+  decision: 'decision',
+};
+
 export function heading(item: Worded): string {
-  const noun = item.commitment_type === 'deadline' ? 'deadline' : 'commitment';
+  if (item.kind === 'memory') return 'You told me';
+  const noun = item.commitment_type === 'deadline' ? 'deadline' : (NOUN[item.kind] ?? 'detail');
   return isFact(item) ? noun[0].toUpperCase() + noun.slice(1) : `Possible ${noun}`;
 }
 
 export function parties(item: Worded): string {
+  if (item.kind !== 'commitment') return '';
   if (item.commitment_type === 'deadline') return 'For you';
   if (item.direction === 'by_user') return item.committed_to ? `You → ${item.committed_to}` : 'You';
   if (item.direction === 'to_user') return `${item.committed_by ?? 'Someone'} → you`;

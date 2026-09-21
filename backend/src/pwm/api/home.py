@@ -17,11 +17,14 @@ from pwm.db.models import Assertion, Brief, Notification
 router = APIRouter()
 FIRST_VISIT_LOOKBACK = timedelta(days=14)
 NEEDS_ATTENTION_PREVIEW = 3
+# Home stays calm: the few changes that matter most, with the rest in the brief.
+WHAT_CHANGED_PREVIEW = 4
 
 
 class Home(BaseModel):
     since: datetime
     what_changed: list[WrittenItem]
+    what_changed_total: int
     needs_attention: list[CommitmentItem]
     needs_attention_total: int
     remembered: list[CommitmentItem]
@@ -76,7 +79,8 @@ def home(session: DbSession, user: CurrentUser) -> Home:
     ).all()
     return Home(
         since=since,
-        what_changed=TemplateBriefWriter().write(changes),
+        what_changed=TemplateBriefWriter().write(changes[:WHAT_CHANGED_PREVIEW]),
+        what_changed_total=len(changes),
         needs_attention=attention[:NEEDS_ATTENTION_PREVIEW],
         needs_attention_total=len(attention),
         remembered=[item_for(a, set()) for a in remembered],

@@ -231,6 +231,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask */
+        post: operations["ask_ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/memories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remember
+         * @description Remember this. The note is the user's own statement; anything read out of it
+         *     (a date, a person) still arrives as a possibility.
+         */
+        post: operations["remember_memories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/memories/{assertion_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Forget */
+        delete: operations["forget_memories__assertion_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -252,6 +307,17 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AnswerView */
+        AnswerView: {
+            /** Text */
+            text: string;
+            /** Grounded */
+            grounded: boolean;
+            /** Caveat */
+            caveat: string | null;
+            /** Cited */
+            cited: components["schemas"]["CitedFact"][];
+        };
         /** AssertionDetail */
         AssertionDetail: {
             /**
@@ -259,6 +325,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Kind */
+            kind: string;
             /** What */
             what: string;
             /** Commitment Type */
@@ -286,8 +354,6 @@ export interface components {
             /** Has Conflict */
             has_conflict: boolean;
             source: components["schemas"]["SourceSummary"];
-            /** Kind */
-            kind: string;
             /** Subject */
             subject: string;
             /** Predicate */
@@ -335,6 +401,8 @@ export interface components {
              * @default false
              */
             overdue: boolean;
+            /** Effective */
+            effective?: string | null;
             /** Is Fact */
             is_fact: boolean;
             /** Confidence */
@@ -373,6 +441,24 @@ export interface components {
             /** Items */
             items: components["schemas"]["WrittenItem"][];
         };
+        /** CitedFact */
+        CitedFact: {
+            /**
+             * Assertion Id
+             * Format: uuid
+             */
+            assertion_id: string;
+            /** Text */
+            text: string;
+            /** Evidence Quote */
+            evidence_quote: string;
+            /** Source Label */
+            source_label: string;
+            /** Is Fact */
+            is_fact: boolean;
+            /** Confidence */
+            confidence: string;
+        };
         /** CommitmentItem */
         CommitmentItem: {
             /**
@@ -380,6 +466,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Kind */
+            kind: string;
             /** What */
             what: string;
             /** Commitment Type */
@@ -450,6 +538,8 @@ export interface components {
             since: string;
             /** What Changed */
             what_changed: components["schemas"]["WrittenItem"][];
+            /** What Changed Total */
+            what_changed_total: number;
             /** Needs Attention */
             needs_attention: components["schemas"]["CommitmentItem"][];
             /** Needs Attention Total */
@@ -464,6 +554,11 @@ export interface components {
          * @enum {string}
          */
         ItemKind: "due_soon" | "changed" | "conflict" | "possible_commitment" | "consumer" | "remembered";
+        /** NewMemory */
+        NewMemory: {
+            /** Text */
+            text: string;
+        };
         /** NotificationView */
         NotificationView: {
             /**
@@ -482,6 +577,11 @@ export interface components {
             created_at: string;
             /** Read */
             read: boolean;
+        };
+        /** Question */
+        Question: {
+            /** Question */
+            question: string;
         };
         /** RelatedAssertion */
         RelatedAssertion: {
@@ -883,6 +983,105 @@ export interface operations {
                 "application/json": components["schemas"]["EventIn"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_ask_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Question"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnswerView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remember_memories_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewMemory"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommitmentItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forget_memories__assertion_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

@@ -60,6 +60,8 @@ class BriefItem(BaseModel):
     previous_value: str | None = None
     due: date | None = None
     overdue: bool = False
+    # When a price, plan, or window takes effect or ends.
+    effective: date | None = None
     is_fact: bool
     confidence: str
     evidence_quote: str
@@ -93,6 +95,7 @@ def _item(kind: ItemKind, a: Assertion, today: date, other: Assertion | None = N
         subject=a.value if a.kind == "commitment" and compared else a.subject,
         predicate=a.predicate, value=_shown_value(a) if compared else a.value,
         previous_value=_shown_value(other) if other else None, due=a.due,
+        effective=a.valid_from or a.valid_to,
         overdue=a.due is not None and a.due < today and a.status == "open",
         is_fact=_is_fact(a), confidence=a.confidence, evidence_quote=a.evidence_quote,
         other_evidence_quote=other.evidence_quote if other else None,

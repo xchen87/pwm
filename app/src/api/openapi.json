@@ -433,6 +433,127 @@
         }
       }
     },
+    "/ask": {
+      "post": {
+        "summary": "Ask",
+        "operationId": "ask_ask_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Question"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/memories": {
+      "post": {
+        "summary": "Remember",
+        "description": "Remember this. The note is the user's own statement; anything read out of it\n(a date, a person) still arrives as a possibility.",
+        "operationId": "remember_memories_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewMemory"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/memories/{assertion_id}": {
+      "delete": {
+        "summary": "Forget",
+        "operationId": "forget_memories__assertion_id__delete",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assertion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Forget Memories  Assertion Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -454,12 +575,54 @@
   },
   "components": {
     "schemas": {
+      "AnswerView": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "grounded": {
+            "type": "boolean",
+            "title": "Grounded"
+          },
+          "caveat": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caveat"
+          },
+          "cited": {
+            "items": {
+              "$ref": "#/components/schemas/CitedFact"
+            },
+            "type": "array",
+            "title": "Cited"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "grounded",
+          "caveat",
+          "cited"
+        ],
+        "title": "AnswerView"
+      },
       "AssertionDetail": {
         "properties": {
           "id": {
             "type": "string",
             "format": "uuid",
             "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
           },
           "what": {
             "type": "string",
@@ -559,10 +722,6 @@
           "source": {
             "$ref": "#/components/schemas/SourceSummary"
           },
-          "kind": {
-            "type": "string",
-            "title": "Kind"
-          },
           "subject": {
             "type": "string",
             "title": "Subject"
@@ -607,6 +766,7 @@
         "type": "object",
         "required": [
           "id",
+          "kind",
           "what",
           "commitment_type",
           "direction",
@@ -621,7 +781,6 @@
           "evidence_quote",
           "has_conflict",
           "source",
-          "kind",
           "subject",
           "predicate",
           "extraction_method",
@@ -695,6 +854,18 @@
             "type": "boolean",
             "title": "Overdue",
             "default": false
+          },
+          "effective": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective"
           },
           "is_fact": {
             "type": "boolean",
@@ -783,12 +954,55 @@
         ],
         "title": "BriefView"
       },
+      "CitedFact": {
+        "properties": {
+          "assertion_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Assertion Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "evidence_quote": {
+            "type": "string",
+            "title": "Evidence Quote"
+          },
+          "source_label": {
+            "type": "string",
+            "title": "Source Label"
+          },
+          "is_fact": {
+            "type": "boolean",
+            "title": "Is Fact"
+          },
+          "confidence": {
+            "type": "string",
+            "title": "Confidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "assertion_id",
+          "text",
+          "evidence_quote",
+          "source_label",
+          "is_fact",
+          "confidence"
+        ],
+        "title": "CitedFact"
+      },
       "CommitmentItem": {
         "properties": {
           "id": {
             "type": "string",
             "format": "uuid",
             "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
           },
           "what": {
             "type": "string",
@@ -892,6 +1106,7 @@
         "type": "object",
         "required": [
           "id",
+          "kind",
           "what",
           "commitment_type",
           "direction",
@@ -1034,6 +1249,10 @@
             "type": "array",
             "title": "What Changed"
           },
+          "what_changed_total": {
+            "type": "integer",
+            "title": "What Changed Total"
+          },
           "needs_attention": {
             "items": {
               "$ref": "#/components/schemas/CommitmentItem"
@@ -1061,6 +1280,7 @@
         "required": [
           "since",
           "what_changed",
+          "what_changed_total",
           "needs_attention",
           "needs_attention_total",
           "remembered",
@@ -1079,6 +1299,21 @@
           "remembered"
         ],
         "title": "ItemKind"
+      },
+      "NewMemory": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 2,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "NewMemory"
       },
       "NotificationView": {
         "properties": {
@@ -1114,6 +1349,21 @@
           "read"
         ],
         "title": "NotificationView"
+      },
+      "Question": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 2,
+            "title": "Question"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "Question"
       },
       "RelatedAssertion": {
         "properties": {

@@ -6,7 +6,9 @@ import {
   type AssertionDetail,
   confirmAssertion,
   dismissAssertion,
+  forgetMemory,
   getAssertion,
+  recordEvent,
   setCommitmentStatus,
 } from '../../src/api/client';
 import { Button } from '../../src/components/Button';
@@ -53,6 +55,7 @@ export default function Inspect() {
   useFocusEffect(
     useCallback(() => {
       getAssertion(id).then(setDetail, () => setError('Can’t load this right now.'));
+      void recordEvent('source_inspected', id);
     }, [id]),
   );
 
@@ -75,10 +78,9 @@ export default function Inspect() {
     <ScrollView contentContainerStyle={styles.content}>
       <Text style={[styles.heading, !isFact(detail) && styles.possible]}>{heading(detail)}</Text>
       <Text style={styles.what}>{detail.what}</Text>
-      <Text style={styles.parties}>
-        {parties(detail)}
-        {due ? ` · ${due}` : ''}
-      </Text>
+      {(parties(detail) || due) && (
+        <Text style={styles.parties}>{[parties(detail), due].filter(Boolean).join(' · ')}</Text>
+      )}
 
       {detail.source_suspicious && (
         <Text style={styles.warning}>
@@ -100,7 +102,10 @@ export default function Inspect() {
       <Text style={styles.section}>How I know</Text>
       <Fact label="Basis" value={originLabel(detail.origin)} />
       <Fact label="Confidence" value={CONFIDENCE[detail.confidence] ?? detail.confidence} />
-      <Fact label="Your review" value={isFact(detail) ? 'You confirmed this' : `Not confirmed (${detail.review})`} />
+      <Fact
+        label="Your review"
+        value={detail.kind === 'memory' ? 'Your own words' : isFact(detail) ? 'You confirmed this' : `Not confirmed (${detail.review})`}
+      />
       <Fact label="Found by" value={detail.extraction_method} />
 
       {detail.related.length > 0 && <Text style={styles.section}>Related</Text>}
@@ -115,10 +120,15 @@ export default function Inspect() {
       ))}
 
       {error && <Text style={styles.warning}>{error}</Text>}
-      {!replaced && (
+      {detail.kind === 'memory' && (
+        <View style={styles.actions}>
+          <Button label="Forget this" onPress={() => forgetMemory(id).then(() => router.back(), (p: Error) => setError(p.message))} />
+        </View>
+      )}
+      {!replaced && detail.kind !== 'memory' && (
         <View style={styles.actions}>
           {isFact(detail) ? (
-            detail.status === 'open' && (
+            detail.kind === 'commitment' && detail.status === 'open' && (
               <>
                 <Button label="Done" kind="primary" onPress={() => act(() => setCommitmentStatus(id, 'done'), true)} />
                 <Button label="No longer needed" onPress={() => act(() => setCommitmentStatus(id, 'cancelled'), true)} />

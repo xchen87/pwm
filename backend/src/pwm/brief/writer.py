@@ -1,22 +1,11 @@
 """Wording a brief. The writer words items; it never chooses or changes them."""
 
+from datetime import date, datetime
 from typing import Protocol
 
 from pydantic import BaseModel
 
 from pwm.brief.items import BriefItem, ItemKind
-
-PREDICATE_WORDS = {
-    "date": "date",
-    "phone": "phone number",
-    "quote": "quote",
-    "monthly_price": "monthly price",
-    "monthly_rent": "monthly rent",
-    "annual_premium": "annual premium",
-    "return_window_ends": "return window",
-    "expires": "expiry",
-    "deadline": "deadline",
-}
 
 
 class WrittenItem(BaseModel):
@@ -32,16 +21,42 @@ class BriefWriter(Protocol):
     def write(self, items: list[BriefItem]) -> list[WrittenItem]: ...
 
 
+MONEY = {"quote", "monthly_price", "monthly_rent", "annual_premium"}
+PER = {"monthly_price": " a month", "monthly_rent": " a month", "annual_premium": " a year"}
+
+
+def _day(value: date) -> str:
+    return value.strftime("%a, %b %-d")
+
+
 def _when(item: BriefItem) -> str:
     if item.due is None:
         return ""
-    day = item.due.strftime("%a %b %-d")
-    return f" — was due {day}" if item.overdue else f" — due {day}"
+    return f" — was due {_day(item.due)}" if item.overdue else f" — due {_day(item.due)}"
 
 
 def _quoted(text: str, limit: int = 90) -> str:
     text = " ".join(text.split())
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def readable(predicate: str, value: str | None) -> str:
+    """Dates and amounts the way a person would write them. Anything else is left alone."""
+    if not value:
+        return "unknown"
+    if predicate in MONEY:
+        try:
+            amount = float(value)
+        except ValueError:
+            return value
+        return f"${amount:,.2f}" if amount != int(amount) else f"${int(amount):,}"
+    try:
+        if "T" in value:
+            moment = datetime.fromisoformat(value)
+            return f"{_day(moment.date())} at {moment.strftime('%-I:%M %p')}"
+        return _day(date.fromisoformat(value))
+    except ValueError:
+        return value
 
 
 class TemplateBriefWriter:
@@ -54,7 +69,6 @@ class TemplateBriefWriter:
 
     def _write(self, item: BriefItem) -> WrittenItem:
         step: str | None
-        what = PREDICATE_WORDS.get(item.predicate, item.predicate.replace("_", " "))
         match item.kind:
             case ItemKind.DUE_SOON:
                 headline = f"{_quoted(item.value)}{_when(item)}"
@@ -69,28 +83,40 @@ class TemplateBriefWriter:
                 why = "It looks like a promise or deadline, but I have not tracked it."
                 step = "Confirm it to track it, or dismiss it."
             case ItemKind.CHANGED:
-                headline = (
-                    f"{item.subject}: {what} changed from {item.previous_value} to {item.value}"
+                new, old = (
+                    readable(item.predicate, item.value),
+                    readable(item.predicate, item.previous_value),
                 )
+                if item.predicate in MONEY:
+                    headline = f"{item.subject}: now {new}, was {old}"
+                else:
+                    headline = f"{item.subject}: moved to {new} (was {old})"
                 why = "A later message updates what an earlier one said."
                 step = None
             case ItemKind.CONFLICT:
-                headline = (
-                    f"Two sources disagree about {_quoted(item.subject, 60)}: "
-                    f"{item.value} vs {item.previous_value}"
+                new, old = (
+                    readable(item.predicate, item.value),
+                    readable(item.predicate, item.previous_value),
                 )
-                why = "I can't tell which is right, so both are shown."
+                headline = f"Two sources disagree about {_quoted(item.subject, 60)}: {new} or {old}"
+                why = "I can’t tell which is right, so both are shown."
                 step = "Open it to see both sources."
             case ItemKind.CONSUMER:
-                headline = f"{item.subject}: {what} {item.value}"
-                why = "This takes effect soon and changes what you pay or can return."
+                amount = readable(item.predicate, item.value)
+                starts = f" from {_day(item.effective)}" if item.effective else ""
+                if item.predicate == "return_window_ends":
+                    headline = f"{item.subject}: you can return it until {amount}"
+                    why = "After that date it can’t go back."
+                else:
+                    headline = f"{item.subject}: {amount}{PER.get(item.predicate, '')}{starts}"
+                    why = "This changes what you pay, and it starts soon."
                 step = None
             case _:
                 headline = f"You asked me to remember: {_quoted(item.evidence_quote)}"
                 why = "The date you mentioned is coming up."
                 step = None
         if not item.is_fact and item.kind in (ItemKind.CHANGED, ItemKind.CONSUMER):
-            headline = f"It looks like {headline[0].lower()}{headline[1:]}"
+            headline = f"It looks like {headline}"
         return WrittenItem(
             item=item, headline=headline, why_it_matters=why, suggested_next_step=step
         )

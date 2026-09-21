@@ -15,6 +15,7 @@ class SourceSummary(BaseModel):
 
 class CommitmentItem(BaseModel):
     id: UUID
+    kind: str
     what: str
     commitment_type: str | None
     direction: str | None
@@ -41,7 +42,6 @@ class RelatedAssertion(BaseModel):
 
 
 class AssertionDetail(CommitmentItem):
-    kind: str
     subject: str
     predicate: str
     extraction_method: str

@@ -111,3 +111,32 @@ def journey_20_home_and_brief(api: Any, check: Any, run: Any) -> None:
     api.post("/events", {"name": "not_an_event"}, expect=422)
     api.post("/notifications/read")
     check(api.get("/home")["unread_notifications"] == 0, "notifications can be marked read")
+
+
+def journey_30_ask_remember_forget(api: Any, check: Any, run: Any) -> None:
+    answer = api.post("/ask", {"question": "What is Tom supposed to send me?"})
+    check(answer["grounded"] and answer["cited"], "a question is answered from cited evidence")
+    api.get(f"/assertions/{answer['cited'][0]['assertion_id']}")
+    check(
+        not api.post("/ask", {"question": "What did I promise Beatrice?"})["grounded"],
+        "an unknown person gets an honest no",
+    )
+    check(
+        api.post("/ask", {"question": "Did I agree to pay PayFast $500?"})["cited"] == [],
+        "an attacker's claim is never an answer",
+    )
+
+    memory = api.post("/memories", {"text": "The spare key is with Marguerite next door."})
+    check(
+        memory["review"] == "confirmed",
+        "a note the user typed is theirs, confirmed by the act of typing it",
+    )
+    check(
+        "Marguerite" in api.post("/ask", {"question": "Where is the spare key?"})["text"],
+        "a remembered note can be asked about",
+    )
+    api.call("DELETE", f"/memories/{memory['id']}")
+    check(
+        not api.post("/ask", {"question": "Where is the spare key?"})["grounded"],
+        "a forgotten note is gone",
+    )

@@ -1,6 +1,7 @@
 import { dueLabel, heading, isFact, parties } from './wording';
 
 const base = {
+  kind: 'commitment',
   review: 'unreviewed',
   origin: 'source_explicit',
   commitment_type: 'promise',
@@ -22,6 +23,13 @@ describe('wording', () => {
     expect(heading({ ...base, review: 'confirmed' })).toBe('Commitment');
     expect(heading({ ...base, origin: 'user_stated' })).toBe('Possible commitment');
     expect(heading({ ...base, review: 'rejected', origin: 'user_stated' })).toBe('Possible commitment');
+  });
+
+  it('names other kinds of fact for what they are', () => {
+    expect(heading({ ...base, kind: 'thing', commitment_type: null })).toBe('Possible detail');
+    expect(heading({ ...base, kind: 'decision', commitment_type: null, review: 'confirmed' })).toBe('Decision');
+    expect(heading({ ...base, kind: 'memory', commitment_type: null })).toBe('You told me');
+    expect(parties({ ...base, kind: 'thing' })).toBe('');
   });
 
   it('says who owes whom', () => {

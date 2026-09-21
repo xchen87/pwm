@@ -68,6 +68,17 @@ class TemporalQuery(BaseModel):
     expected: str
 
 
+class GoldQuestion(BaseModel):
+    """A question for Ask Your World. `expected` lists gold assertions any one of which
+    makes the answer right; an empty list means the only right answer is a refusal."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    question: str
+    expected: tuple[str, ...] = ()
+
+
 class InjectedSpan(BaseModel):
     """Attacker-written text. No candidate may be derived from it."""
 
@@ -88,3 +99,4 @@ class Gold(BaseModel):
     people: tuple[GoldPerson, ...]
     temporal_queries: tuple[TemporalQuery, ...]
     injected_spans: tuple[InjectedSpan, ...]
+    questions: tuple[GoldQuestion, ...] = ()

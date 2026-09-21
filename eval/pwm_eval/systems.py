@@ -63,6 +63,10 @@ class SystemUnderTest(Protocol):
         """Answer a temporal query about the world built by the last `run`."""
         ...
 
+    def ask(self, question: str, today: date) -> list[Candidate]:
+        """The evidence cited in answer to a question; empty means the system declined."""
+        ...
+
 
 class BaselineSystem:
     """Extracts nothing. Its scores are the floor every later change is compared with."""
@@ -74,6 +78,9 @@ class BaselineSystem:
 
     def as_of(self, subject: str, predicate: str, when: date) -> str | None:
         return None
+
+    def ask(self, question: str, today: date) -> list[Candidate]:
+        return []
 
 
 class OracleSystem:
@@ -124,3 +131,11 @@ class OracleSystem:
             if (q.subject, q.predicate, q.as_of) == (subject, predicate, when):
                 return q.expected
         return None
+
+    def ask(self, question: str, today: date) -> list[Candidate]:
+        wanted = next((q.expected for q in self._gold.questions if q.question == question), ())
+        return [
+            Candidate.model_validate(a.model_dump(exclude={"id", "validity"}))
+            for a in self._gold.assertions
+            if a.id in wanted
+        ]

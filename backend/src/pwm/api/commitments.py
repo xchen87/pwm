@@ -62,7 +62,8 @@ def _conflicts(session: Session, ids: list[UUID]) -> set[UUID]:
 def item_for(assertion: Assertion, conflicted: set[UUID]) -> CommitmentItem:
     today = clock.today()
     return CommitmentItem(
-        id=assertion.id, what=assertion.value, commitment_type=assertion.commitment_type,
+        id=assertion.id,
+        kind=assertion.kind, what=assertion.value, commitment_type=assertion.commitment_type,
         direction=assertion.direction, committed_by=assertion.committed_by,
         committed_to=assertion.committed_to, due=assertion.due,
         overdue=assertion.due is not None and assertion.due < today and assertion.status == "open",
@@ -148,7 +149,7 @@ def _detail(session: Session, assertion: Assertion) -> AssertionDetail:
     before, quote, after = _context(assertion)
     item = item_for(assertion, _conflicts(session, [assertion.id]))
     return AssertionDetail(
-        **item.model_dump(), kind=assertion.kind, subject=assertion.subject,
+        **item.model_dump(), subject=assertion.subject,
         predicate=assertion.predicate, extraction_method=assertion.extraction_method,
         recorded_at=assertion.recorded_at, context_before=before, context_quote=quote,
         context_after=after,

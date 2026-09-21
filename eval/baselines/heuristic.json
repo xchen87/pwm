@@ -1,4 +1,6 @@
 {
+  "ask_false_answer_rate": 0.0,
+  "ask_hit_rate": 0.8182,
   "commitment_direction_accuracy": 1.0,
   "commitment_due_accuracy": 1.0,
   "commitments.precision": 0.9375,

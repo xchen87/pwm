@@ -124,3 +124,14 @@ def test_what_changed_is_measured_from_the_previous_visit(
         for w in client.get("/home").json()["what_changed"]
         if w["item"]["kind"] in ("consumer", "remembered")
     ]
+
+
+def test_dates_and_money_read_the_way_a_person_writes_them() -> None:
+    from pwm.brief.writer import readable
+
+    assert readable("date", "2026-09-27T18:00") == "Sun, Sep 27 at 6:00 PM"
+    assert readable("date", "2026-09-26") == "Sat, Sep 26"
+    assert readable("quote", "19950") == "$19,950"
+    assert readable("monthly_price", "18.99") == "$18.99"
+    assert readable("phone", "555-0142") == "555-0142"
+    assert readable("quote", "about twenty grand") == "about twenty grand"
