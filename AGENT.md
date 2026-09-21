@@ -188,8 +188,9 @@ Measure: opened, useful, dismissed, corrected, acted upon.
 
 Implement retrieval over the world model, all in Postgres:
 - entity retrieval, temporal (as-of) retrieval, source retrieval
-- semantic retrieval (pgvector) over verified quotes and user memories
-- relationship traversal (recursive CTEs) over interaction facts
+- word-overlap retrieval with intent detection, in process, over the user's live assertions (built; decisions D37)
+- semantic retrieval (pgvector) over verified quotes and user memories — **deferred** until an embedding provider is configured and the golden set shows paraphrase recall needs it; `retrieve()` is the seam
+- relationship traversal (recursive CTEs) over interaction facts — **deferred** with it
 
 Every answer provides: what the system believes, confidence, evidence quote, and a correction action. If the model cannot ground an answer, it says so.
 
@@ -203,6 +204,8 @@ Add to eval: source-grounding rate and hallucination rate for answers; injection
 ---
 
 # Slice 4 — Real accounts and real data
+
+**Status:** the connector protocol, a demo-mailbox connector, connections with disconnect-and-delete, delete-everything, and Gmail/Calendar payload normalization are built and tested. Everything below that touches Google or real identity is **not started and must not be written blind**: it needs a Google OAuth client (founder action, decisions D15) to build against and verify.
 
 Implement:
 - user authentication (sessions for web, tokens in secure device storage for phones)
@@ -219,6 +222,8 @@ Do NOT create facts from every message. Raw/normalized source records stay separ
 ---
 
 # Slice 5 — Phone delivery
+
+**Status:** not started. Needs an Expo account for EAS builds and Apple/Google developer accounts for TestFlight / Play internal testing (founder). The app has not yet been run in an emulator or on a device: the development machine has no Android SDK. The quickest check is Expo Go on a phone (`docs/local-dev.md`).
 
 The app has been Expo since Slice 1; this slice makes it a real installed app.
 - EAS builds for iOS and Android; TestFlight and Play internal testing
