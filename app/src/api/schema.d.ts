@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/auth/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Config
+         * @description What a signed-out app needs to know to offer sign-in. Public by design.
+         */
+        get: operations["config_auth_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/google/start": {
         parameters: {
             query?: never;
@@ -589,6 +609,13 @@ export interface components {
             /** Related */
             related: components["schemas"]["RelatedAssertion"][];
         };
+        /** AuthConfig */
+        AuthConfig: {
+            /** Google */
+            google: boolean;
+            /** Dev Login */
+            dev_login: boolean;
+        };
         /** Available */
         Available: {
             /** Connector */
@@ -763,6 +790,13 @@ export interface components {
             /** Committed To */
             committed_to?: string | null;
         };
+        /** Deleted */
+        Deleted: {
+            /** Status */
+            status: string;
+            /** Google Access Revoked */
+            google_access_revoked: boolean;
+        };
         /** EventIn */
         EventIn: {
             /** Name */
@@ -821,6 +855,8 @@ export interface components {
         LoginCodeIn: {
             /** Code */
             code: string;
+            /** Verifier */
+            verifier: string;
         };
         /** Me */
         Me: {
@@ -963,10 +999,31 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    config_auth_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthConfig"];
+                };
+            };
+        };
+    };
     start_auth_google_start_get: {
         parameters: {
             query: {
                 redirect: string;
+                challenge: string;
             };
             header?: never;
             path?: never;
@@ -1776,9 +1833,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["Deleted"];
                 };
             };
             /** @description Validation Error */

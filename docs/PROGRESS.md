@@ -23,7 +23,7 @@ Working constraint (founder, 2026-09-21): reach a showable, demo-ready MVP **wit
 | Slice 2 — What changed + World Brief | done; independently reviewed, findings fixed | commits `00a624e` + review-fix commit; verify green |
 | Slice 3 — Ask Your World + Remember / Correct / Forget | done; independently reviewed, findings fixed | same |
 | Demo readiness — onboarding, connections/disconnect/delete, same-person confirmation, demo launcher and script, in-browser checks | done; independently reviewed, findings fixed | commit `926d450` + next; verify green (122 tests, 87 functional checks incl. the built app in headless Chrome) |
-| Slice 4 — accounts, real Gmail/Calendar | **built against a stand-in for Google; unverified against Google itself** (founder chose this on 2026-09-21); independent review in progress | branch `slice-4`; verify green |
+| Slice 4 — accounts, real Gmail/Calendar | **built against a stand-in for Google; unverified against Google itself** (founder chose this on 2026-09-21); independently reviewed, findings fixed | branch `slice-4`; verify green |
 | Slice 5 — phone builds, real push | not started; store/TestFlight builds **need founder** (Expo / Apple / Google accounts) | |
 | Live LLM evaluation | blocked: **needs founder** (API key + spend approval) | |
 
@@ -190,3 +190,35 @@ Could not break: NUL and body handling, the confirm → supersede → dismiss �
 - **What this does not prove:** that Google behaves as its documentation says. Nothing here has touched Google. The native sign-in path (`expo-web-browser` on a device) has not been run either.
 - Not built, recorded in D57/D58: a retention window that purges stored bodies; propagation of deletions and label changes from Gmail.
 - `scripts/verify.sh`: **ALL GREEN** — 252 backend/eval tests, 8 app tests, 126 functional checks (incl. the full sign-in → sync → ask → disconnect → sign-out journey against a separate fake-Google process); eval gate no regression across 24 scores.
+
+**Slice 4 independent security review.** A fifth reviewer examined `ca3e753..13241d1` from a frozen snapshot with its own database. 2 high, 6 medium, 12 low, plus a list of likely surprises with real Google. Dispositions:
+
+| # | Sev | Finding | Disposition |
+|---|---|---|---|
+| H1 | high | Disconnecting Gmail mid-backfill was undone: a leftover queued page re-created the connection and re-read everything the user had just deleted | **Fixed.** Disconnect deletes pending syncs for that connection; background syncs never create a connection (`create=False`); at most one pending sync per connection. Test with a straggler job. |
+| H2 | high | Outside `local` a signed-out user had no way to reach "Continue with Google": the only button lived behind an authenticated call | **Fixed.** Public `/auth/config`; a `SignedOut` screen shown on any 401, depending on nothing that needs a session; API errors carry their status. |
+| M1 | med | Redirect allow-list matched by prefix (`pwm://auth.evil`, `exp://attacker…`), in every environment, leaking a live login code | **Fixed.** Exact match on scheme, host and path; no query or fragment; length-bounded; Expo Go's `exp://…/--/auth` only in `local`. 11 rejection cases tested. |
+| M2 | med | The login code was bound to nothing: any app registered for `pwm://` could redeem it | **Fixed.** The app makes a secret, sends its SHA-256 with `/start`, and must present the secret to redeem. |
+| M3 | med | Login CSRF: a link carrying an attacker's login code would sign the victim into the attacker's account | **Fixed by the same binding**: an app only redeems a code for a sign-in it started, and refuses when it holds no secret. |
+| M4 | med | Permanently failed syncs stayed "syncing" forever; **no recurring sync existed at all** after sign-in; a stale page or sync token wedged the cursor; 403 rate limits were not retried | **Fixed.** `error` status with the exception class; `cli tick` queues due syncs every `PWM_SYNC_MINUTES`; stale Gmail page tokens restart the listing, Calendar 400 is treated like 410; 403 is retried. Tests for each. |
+| M5 | med | Cancelled events stayed live and gained a duplicate; any non-time edit duplicated the event | **Fixed.** Only versions that say something new speak; a cancelled latest version silences the event; a bare `{id, status: cancelled}` deletion is stamped now. Test. The gold labels no longer expect the cancelled Denver conference as a fact (baseline updated: 25/30 facts, same five misses as before). |
+| M6 | med | A missing or rotated key turned every read into a 500 and wedged processing; no key id existed despite the docstring; plaintext-era bodies were never re-sealed; with an unreadable token, delete-everything destroyed it locally and *said nothing* about the live grant at Google | **Fixed.** Reads use clear metadata and degrade gracefully; writes return 503 and change nothing; `enc:v2:<key id>:…`, `PWM_DATA_KEYS_OLD`, `cli reseal` (rotation tested end to end); `DELETE /me` reports `google_access_revoked`. |
+| L1 | low | "A database dump does not contain anyone's mail" was overstated: quotes and values are in the clear | **Corrected** in code comments, `pwm.crypto`'s docstring and D57. |
+| L2 | low | A state could be reused after a failed exchange | **Fixed.** Spent and committed before Google is called. Test. |
+| L3 | low | Every token-endpoint 400/401 looked like "reconnect"; transport errors became 500s | **Fixed.** Only `invalid_grant` means the grant is gone. Test. |
+| L4 | low | Duplicate follow-up chains | **Fixed** (one pending sync per connection; jobs are `running` while they run; stale running jobs are requeued). Long transaction around HTTP and whole-mailbox reprocessing per page: **open**, see below. |
+| L5 | low | Forwarded/list mail with `dmarc=pass` was flagged forged | **Fixed.** DMARC pass wins; comments ignored. 7 cases tested. |
+| L6–L8 | low | 500 on a long redirect; login codes never purged; a declined grant left alive at Google | **Fixed.** |
+| L9–L12 | low | Code-state oracle; no rate limiting; sessionStorage readable by XSS; partial disconnect keeps the full grant | L9 fixed (one message). **Open:** rate limiting (belongs at the edge), web token storage (documented choice), partial disconnect keeps Gmail scope until Calendar goes too (D60; the app should say so). |
+
+Also from the review, fixed before first contact with Google: drafts, spam and trash are never read (list query and label filter, including via history); HTML-only mail is read from its visible text with hidden elements removed; the calendar window is bounded at both ends so recurring events do not expand forever.
+
+**Open, recorded deliberately:**
+- Every page of a backfill re-runs the funnel over the whole mailbox: quadratic over a real 90-day read. Fine for 119 synthetic sources; needs incremental processing before a real inbox (also noted in D19).
+- HTTP calls and backoff sleeps happen inside the job's transaction.
+- Deletions and label changes in Gmail are not propagated; a body retention window is not built (D57, D58).
+- In `local`, signing out appears to do nothing when the Google account's email is the development user's, because dev login serves the same adopted account.
+
+**Expect these on first contact with real Google** (reviewer's list, none reproduced against Google): the fake accepts any redirect URI and client secret, always returns a refresh token and `scope`, and ignores `q` — so `newer_than:90d -in:draft` has never been exercised; whether a Calendar sync-token request may omit `singleEvents`; all-day events are pinned to UTC midnight; Workspace accounts without Gmail return 400 `failedPrecondition`; consent screen and test-user restrictions will surface as Google error pages.
+
+- `scripts/verify.sh`: **ALL GREEN** — 275 backend/eval tests (suite repeated five times, stable), 8 app tests, 126 functional checks; eval gate no regression across 24 scores.

@@ -23,7 +23,8 @@ SCOPES = (
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/calendar.readonly",
 )
-RETRYABLE = {429, 500, 502, 503, 504}
+# Google reports rate limits as 403 (rateLimitExceeded) as well as 429.
+RETRYABLE = {403, 429, 500, 502, 503, 504}
 MAX_ATTEMPTS = 5
 MAX_WAIT_SECONDS = 30.0
 
@@ -97,34 +98,49 @@ class GoogleClient:
         return str(granted["access_token"])
 
     def _token_request(self, form: dict[str, str], what: str) -> dict[str, Any]:
-        response = self._http.post(
-            self._settings.google_token_url,
-            data={
-                **form,
-                "client_id": self._settings.google_client_id or "",
-                "client_secret": self._settings.google_client_secret or "",
-            },
-        )
-        if response.status_code in (400, 401):
-            # invalid_grant: revoked by the user, expired (7 days in "Testing"), or reused.
-            raise GrantRevoked(response.status_code, what)
-        if response.status_code != 200:
-            raise GoogleError(response.status_code, what)
-        granted: dict[str, Any] = response.json()
-        return granted
-
-    def revoke(self, token: str) -> None:
-        """Best effort: if Google is unreachable the local copy is destroyed regardless."""
         try:
-            self._http.post(self._settings.google_revoke_url, data={"token": token})
+            response = self._http.post(
+                self._settings.google_token_url,
+                data={
+                    **form,
+                    "client_id": self._settings.google_client_id or "",
+                    "client_secret": self._settings.google_client_secret or "",
+                },
+            )
+        except httpx.TransportError:
+            raise GoogleError(0, what) from None
+        if response.status_code == 200:
+            granted: dict[str, Any] = response.json()
+            return granted
+        try:
+            reason = str(response.json().get("error", ""))
+        except ValueError:
+            reason = ""
+        # Only invalid_grant means the user's grant is gone (revoked, expired after 7 days in
+        # "Testing", or a reused code). invalid_client, redirect_uri_mismatch and the rest
+        # are our configuration, and must not be shown to users as "reconnect".
+        if reason == "invalid_grant":
+            raise GrantRevoked(response.status_code, what)
+        raise GoogleError(response.status_code, what)
+
+    def revoke(self, token: str) -> bool:
+        """Whether Google confirmed the revocation. The local copy is destroyed regardless;
+        the caller tells the user when Google could not be reached."""
+        try:
+            return self._http.post(
+                self._settings.google_revoke_url, data={"token": token}
+            ).is_success
         except httpx.HTTPError:
-            pass
+            return False
 
     def userinfo(self, access_token: str) -> dict[str, Any]:
-        response = self._http.get(
-            self._settings.google_userinfo_url,
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
+        try:
+            response = self._http.get(
+                self._settings.google_userinfo_url,
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+        except httpx.TransportError:
+            raise GoogleError(0, "userinfo") from None
         if response.status_code != 200:
             raise GoogleError(response.status_code, "userinfo")
         info: dict[str, Any] = response.json()

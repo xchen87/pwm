@@ -32,11 +32,16 @@ class CalendarConnector:
             try:
                 return self._collect({"syncToken": state["sync"]})
             except GoogleError as error:
-                if error.status != 410:
+                if error.status not in (400, 410):
                     raise
-                # 410 Gone: the sync token expired. Read the window again.
+                # 410 Gone (or a 400 for a token Google no longer accepts): read the window
+                # again. Ingestion ignores what it already has.
         since = clock.now() - timedelta(days=self._days)
-        return self._collect({"timeMin": since.isoformat(), "singleEvents": "true"})
+        # Bounded at both ends: with singleEvents a weekly meeting otherwise expands forever.
+        until = clock.now() + timedelta(days=365)
+        return self._collect(
+            {"timeMin": since.isoformat(), "timeMax": until.isoformat(), "singleEvents": "true"}
+        )
 
     def _collect(self, params: dict[str, Any]) -> FetchResult:
         events: list[dict[str, Any]] = []

@@ -16,8 +16,10 @@ Backend variables use the `PWM_` prefix and may be placed in a `.env` file at th
 | `PWM_SESSION_DAYS` | `30` | Session lifetime. |
 | `PWM_GOOGLE_CLIENT_ID` / `PWM_GOOGLE_CLIENT_SECRET` | unset | Google OAuth client (type: Web application). Unset means Google is shown as unavailable. Server-side only. |
 | `PWM_PUBLIC_URL` | `http://localhost:8000` | Public address of this API. The OAuth redirect URI registered with Google must be `<PWM_PUBLIC_URL>/auth/google/callback`. |
-| `PWM_APP_REDIRECTS` | `["pwm://auth","http://localhost:8081/auth","exp://"]` | Where the app may be sent after sign-in. Anything else is refused. |
+| `PWM_APP_REDIRECTS` | `["pwm://auth","http://localhost:8081/auth"]` | Where the app may be sent after sign-in: exact scheme, host and path. Anything else is refused. Expo Go's `exp://<host>/--/auth` is accepted only when `PWM_ENVIRONMENT=local`. In production, replace the localhost entry with the web app's real `/auth` URL. |
 | `PWM_DATA_KEY` | unset | Base64 of 32 random bytes; encrypts refresh tokens and message bodies. Required before Google can be used. Generate: `python3 -c "import base64,os;print(base64.b64encode(os.urandom(32)).decode())"`. **Losing it makes stored tokens and bodies unreadable; leaking it undoes the encryption.** Keep it out of the database and out of the repo. |
+| `PWM_DATA_KEYS_OLD` | `[]` | Previous data keys, still accepted for reading. To rotate: move the current key here, set a new `PWM_DATA_KEY`, run `uv run python -m pwm.cli reseal`, then empty this list. |
+| `PWM_SYNC_MINUTES` | `15` | How often `pwm.cli tick` (run it from cron or a scheduler) asks each connection for what is new. |
 | `PWM_BACKFILL_DAYS` | `90` | How far back the first sync reads. |
 | `PWM_GOOGLE_AUTH_URL`, `_TOKEN_URL`, `_REVOKE_URL`, `_USERINFO_URL`, `_API_URL` | Google's | Overridden only to point at the stand-in (`pwm.devtools.fake_google`). |
 | `PWM_CORS_ORIGINS` | `["http://localhost:8081","http://localhost:19006"]` | JSON list of web origins allowed to call the API. |

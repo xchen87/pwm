@@ -120,12 +120,20 @@ def disconnect(connector: str, session: DbSession, user: CurrentUser) -> dict[st
     return {"removed_sources": removed}
 
 
+class Deleted(BaseModel):
+    status: str
+    # False when Google could not be reached or our copy of the grant was unreadable. The
+    # data here is gone either way; the app then points the user at Google's own
+    # "third-party access" page to remove the grant there.
+    google_access_revoked: bool
+
+
 @router.delete("/me")
-def delete_everything(session: DbSession, user: CurrentUser) -> dict[str, str]:
+def delete_everything(session: DbSession, user: CurrentUser) -> Deleted:
     """Delete the user and, by cascade, everything known about them, and withdraw our access
     at Google. A signed-in account is simply gone; the local development identity starts
     again empty, because that is all "signing up again" means for it."""
-    service.revoke_google(session, user)
+    revoked = service.revoke_google(session, user)
     was_dev_user = user.google_sub is None
     identity = Party(name=user.name, address=user.email)
     session.execute(delete(User).where(User.id == user.id))
@@ -133,4 +141,4 @@ def delete_everything(session: DbSession, user: CurrentUser) -> dict[str, str]:
     if was_dev_user:
         ensure_user(session, identity)
     session.commit()
-    return {"status": "deleted"}
+    return Deleted(status="deleted", google_access_revoked=revoked)

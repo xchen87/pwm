@@ -299,13 +299,15 @@ class OAuthToken(Base):
 
 
 class OAuthState(Base):
-    """One sign-in attempt in flight: binds Google's callback to the browser that started it."""
+    """One sign-in attempt in flight. `app_challenge` is the hash of a secret only the app
+    that started it holds; it is what ties the end of the flow back to its beginning."""
 
     __tablename__ = "oauth_states"
 
     state: Mapped[str] = mapped_column(String(64), primary_key=True)
     code_verifier: Mapped[str] = mapped_column(String(128))
     app_redirect: Mapped[str] = mapped_column(String(300))
+    app_challenge: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
@@ -317,6 +319,8 @@ class LoginCode(Base):
 
     code_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[UUID] = _user()
+    # Redeemable only by whoever holds the secret whose hash this is.
+    app_challenge: Mapped[str] = mapped_column(String(64))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

@@ -21,6 +21,13 @@ Google = Annotated[GoogleClient, Depends(google_client)]
 
 class LoginCodeIn(BaseModel):
     code: str = Field(min_length=10, max_length=200)
+    verifier: str = Field(min_length=32, max_length=200)
+
+
+class AuthConfig(BaseModel):
+    google: bool
+    # True only in local development: the API answers without a session.
+    dev_login: bool
 
 
 class SessionOut(BaseModel):
@@ -35,10 +42,20 @@ class Me(BaseModel):
     signed_in_with_google: bool
 
 
+@router.get("/auth/config")
+def config() -> AuthConfig:
+    """What a signed-out app needs to know to offer sign-in. Public by design."""
+    settings = get_settings()
+    return AuthConfig(
+        google=settings.google_configured,
+        dev_login=settings.environment == "local" and settings.dev_login,
+    )
+
+
 @router.get("/auth/google/start")
-def start(redirect: str, session: DbSession) -> RedirectResponse:
+def start(redirect: str, challenge: str, session: DbSession) -> RedirectResponse:
     try:
-        url = auth.start(session, get_settings(), redirect)
+        url = auth.start(session, get_settings(), redirect, challenge)
     except auth.AuthError as problem:
         raise HTTPException(400, str(problem)) from None
     session.commit()
@@ -51,8 +68,12 @@ def callback(
 ) -> RedirectResponse:
     if error or not state or not code:
         raise HTTPException(400, "sign-in was cancelled or did not complete")
+    pending = auth.take_state(session, state)
+    session.commit()  # spent before anything else happens, so it cannot be replayed
+    if pending is None:
+        raise HTTPException(400, "this sign-in attempt has expired; start again")
     try:
-        target = auth.finish(session, get_settings(), google, state, code)
+        target = auth.finish(session, get_settings(), google, pending, code)
     except auth.AuthError as problem:
         session.rollback()
         raise HTTPException(400, str(problem)) from None
@@ -66,7 +87,7 @@ def callback(
 @router.post("/auth/session")
 def create_session(body: LoginCodeIn, session: DbSession) -> SessionOut:
     try:
-        token = auth.redeem(session, get_settings(), body.code)
+        token = auth.redeem(session, get_settings(), body.code, body.verifier)
     except auth.AuthError as problem:
         session.commit()  # the code is spent either way
         raise HTTPException(400, str(problem)) from None

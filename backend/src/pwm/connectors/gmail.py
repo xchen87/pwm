@@ -16,6 +16,7 @@ from pwm.google.account import GoogleAccount
 from pwm.google.http import GoogleError
 
 PAGE_SIZE = 50
+UNWANTED = {"DRAFT", "SPAM", "TRASH"}
 ME = "/gmail/v1/users/me"
 
 
@@ -39,10 +40,22 @@ class GmailConnector:
 
     def _backfill(self, state: dict[str, Any]) -> FetchResult:
         history = state.get("history") or self._account.get(f"{ME}/profile")["historyId"]
-        params: dict[str, Any] = {"q": f"newer_than:{self._days}d", "maxResults": PAGE_SIZE}
+        params: dict[str, Any] = {
+            "q": f"newer_than:{self._days}d -in:draft",
+            "maxResults": PAGE_SIZE,
+            "includeSpamTrash": "false",
+        }
         if state.get("page"):
             params["pageToken"] = state["page"]
-        listing = self._account.get(f"{ME}/messages", params)
+        try:
+            listing = self._account.get(f"{ME}/messages", params)
+        except GoogleError as error:
+            if error.status != 400 or "pageToken" not in params:
+                raise
+            # The page token went stale mid-backfill. Start the listing again; what was
+            # already read is ignored by ingestion.
+            params.pop("pageToken")
+            listing = self._account.get(f"{ME}/messages", params)
         records, skipped = self._messages([m["id"] for m in listing.get("messages") or []])
         page = listing.get("nextPageToken")
         mode = {"mode": "backfill", "page": page} if page else {"mode": "incremental"}
@@ -84,5 +97,8 @@ class GmailConnector:
                 if error.status != 404:
                     raise
                 missing += 1  # deleted between listing and fetching
-        records, skipped = normalize_all(payloads, gmail_message)
+        # An unsent draft is not something the user said, and spam is not something anyone
+        # said to them. History reports both, so they are dropped here as well.
+        wanted = [p for p in payloads if not UNWANTED & set(p.get("labelIds") or [])]
+        records, skipped = normalize_all(wanted, gmail_message)
         return records, skipped + missing

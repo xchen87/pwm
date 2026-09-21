@@ -15,10 +15,21 @@ export type AnswerView = components['schemas']['AnswerView'];
 export type ConnectionsView = components['schemas']['ConnectionsView'];
 export type SyncResult = components['schemas']['SyncResult'];
 export type PersonView = components['schemas']['PersonView'];
+export type AuthConfig = components['schemas']['AuthConfig'];
 export type SessionOut = components['schemas']['SessionOut'];
 export type Me = components['schemas']['Me'];
 export type Health = components['schemas']['Health'];
 export type CommitmentStatus = 'open' | 'done' | 'cancelled';
+
+/** An error from the API, with its status so callers can tell "signed out" from "broken". */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
 
 async function request<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
   const token = await getToken();
@@ -34,7 +45,10 @@ async function request<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?
   if (response.status === 401 && token) await clearToken(); // the session ended; start over signed out
   if (!response.ok) {
     const detail = await response.json().then((json) => json?.detail, () => undefined);
-    throw new Error(typeof detail === 'string' ? detail : `${method} ${path} failed with ${response.status}`);
+    throw new ApiError(
+      typeof detail === 'string' ? detail : `${method} ${path} failed with ${response.status}`,
+      response.status,
+    );
   }
   return (await response.json()) as T;
 }
@@ -71,7 +85,9 @@ export const confirmSamePerson = (identifierId: string) =>
 export const markDifferentPerson = (identifierId: string, name: string) =>
   request<unknown>('POST', `/people/identifiers/${identifierId}/split`, { name });
 
-export const exchangeLoginCode = (code: string) => request<SessionOut>('POST', '/auth/session', { code });
+export const exchangeLoginCode = (code: string, verifier: string) =>
+  request<SessionOut>('POST', '/auth/session', { code, verifier });
+export const getAuthConfig = () => request<AuthConfig>('GET', '/auth/config');
 export const getMe = () => request<Me>('GET', '/auth/me');
 export const signOut = () => request<unknown>('POST', '/auth/logout');
 

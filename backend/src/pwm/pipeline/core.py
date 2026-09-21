@@ -42,6 +42,31 @@ class PipelineResult(BaseModel):
     people: tuple[ResolvedIdentity, ...]
 
 
+def silenced_calendar_versions(sources: Sequence[SourceRecord]) -> set[str]:
+    """Calendar sources that must not assert anything.
+
+    An edited event is a new immutable source whose id is `<event>@<updated>`. For each
+    event: a cancelled latest version silences every version (the event is off); otherwise
+    an older version is silenced when the next one says the same time, so an edit to the
+    description or an RSVP does not leave two identical events. A version with a
+    *different* time keeps its voice, which is how a moved meeting shows up as a change.
+    """
+    versions: dict[str, list[SourceRecord]] = {}
+    for source in sources:
+        if source.kind is SourceKind.CALENDAR_EVENT:
+            versions.setdefault(source.id.split("@")[0], []).append(source)
+    silenced: set[str] = set()
+    for history in versions.values():
+        history.sort(key=lambda s: s.observed_at)
+        if history[-1].event_status == "cancelled":
+            silenced.update(s.id for s in history)
+            continue
+        for older, newer in zip(history, history[1:], strict=False):
+            if older.event_status == "cancelled" or older.starts_at == newer.starts_at:
+                silenced.add(older.id)
+    return silenced
+
+
 def calendar_candidate(source: SourceRecord) -> Candidate | None:
     if source.starts_at is None or not source.subject.strip():
         return None
@@ -85,20 +110,27 @@ def acceptable(
     return True
 
 
-_AUTH_FAIL = re.compile(
-    r"\bdmarc\s*=\s*fail\b|\bspf\s*=\s*fail\b[^;]*;.*\bdkim\s*=\s*fail\b|\bdkim\s*=\s*fail\b[^;]*;.*\bspf\s*=\s*fail\b",
-    re.I | re.S,
-)
+_COMMENT = re.compile(r"\([^()]*\)")
+_VERDICT = re.compile(r"\b(dmarc|spf|dkim)\s*=\s*(\w+)", re.I)
 
 
 def failed_sender_authentication(source: SourceRecord) -> bool:
-    """Whether the receiving mail server (Gmail) recorded that this message failed DMARC, or
-    both SPF and DKIM: the From address is probably forged. Absent results prove nothing
-    either way, so they are not held against a message."""
+    """Whether the receiving mail server (Gmail) recorded that this message's From address is
+    probably forged: DMARC failed, or, where there is no DMARC verdict, both SPF and DKIM
+    failed outright. A DMARC pass settles it the other way, which is what keeps ordinary
+    forwarded and mailing-list mail (one check fails, DMARC passes) from being flagged.
+    Absent results prove nothing either way."""
     results = next(
         (v for k, v in source.headers.items() if k.lower() == "authentication-results"), ""
     )
-    return bool(_AUTH_FAIL.search(results))
+    verdicts: dict[str, set[str]] = {}
+    for method, verdict in _VERDICT.findall(_COMMENT.sub(" ", results)):
+        verdicts.setdefault(method.lower(), set()).add(verdict.lower())
+    if "pass" in verdicts.get("dmarc", ()):
+        return False
+    if "fail" in verdicts.get("dmarc", ()):
+        return True
+    return verdicts.get("spf") == {"fail"} and verdicts.get("dkim") == {"fail"}
 
 
 def _really_sent(source: SourceRecord) -> bool:
@@ -152,6 +184,7 @@ def run_pipeline(
     # Someone the user has written to, as of each message. Merely having emailed the user
     # does not make a sender known.
     known_addresses: set[str] = set()
+    silenced = silenced_calendar_versions(ordered)
     thread_history: dict[str, list[str]] = {}
     outcomes: list[SourceOutcome] = []
     drafts: list[DraftAssertion] = []
@@ -169,7 +202,7 @@ def run_pipeline(
 
         try:
             if decision is Route.STRUCTURED:
-                event = calendar_candidate(source)
+                event = None if source.id in silenced else calendar_candidate(source)
                 candidates = (event,) if event else ()
             elif decision in (Route.TRIAGE, Route.EXTRACT):
                 request = ExtractionRequest(

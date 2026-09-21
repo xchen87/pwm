@@ -135,10 +135,17 @@ def event(
     )
     CATEGORIES[id] = SourceCategory.SIGNAL
     # A calendar entry is a structured fact: no model is needed, and each one is expected.
-    gold(
-        f"g_{id}", id, CandidateKind.EVENT, title, "date", start, title,
-        validity=Validity.EXPIRED if status == "cancelled" else Validity.CURRENT,
-    )  # fmt: skip
+    # Except a cancelled one: it is not happening, so nothing should assert that it is.
+    if status != "cancelled":
+        gold(
+            id=f"g_{id}",
+            source_id=id,
+            kind=CandidateKind.EVENT,
+            subject=title,
+            predicate="date",
+            value=start,
+            quote=title,
+        )
 
 
 def capture(id: str, when: str, text: str) -> None:

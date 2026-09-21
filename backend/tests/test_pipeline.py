@@ -395,3 +395,22 @@ def test_the_synthetic_mailbox_reads_the_same_through_the_gmail_path() -> None:
         for a in run_pipeline(sources, USER, HeuristicTriager(), HeuristicExtractor()).assertions
     )
     assert found(through_google) == found(direct)
+
+
+@pytest.mark.parametrize(
+    ("results", "forged"),
+    [
+        ("mx.google.com; dkim=pass; spf=pass; dmarc=pass", False),
+        ("mx.google.com; dkim=fail (list); dkim=pass; spf=fail; dmarc=pass (p=REJECT)", False),
+        ("mx.google.com; spf=pass (the text dmarc=fail appears in a comment); dmarc=pass", False),
+        ("mx.google.com; dkim=fail; spf=softfail; dmarc=fail (p=NONE)", True),
+        ("mx.google.com; dkim=fail; spf=fail", True),
+        ("mx.google.com; spf=softfail; dkim=fail", False),
+        ("", False),
+    ],
+)
+def test_sender_authentication_verdicts(results: str, forged: bool) -> None:
+    from pwm.pipeline.core import failed_sender_authentication
+
+    message = email("hello").model_copy(update={"headers": {"Authentication-Results": results}})
+    assert failed_sender_authentication(message) is forged

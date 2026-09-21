@@ -111,7 +111,9 @@ def test_the_first_from_header_wins_and_attachments_are_not_the_body() -> None:
     }  # fmt: skip
     record = gmail_message(message)
     assert record.sender and record.sender.address == "real@bank.example"
-    assert record.body == ""
+    assert (
+        record.body == "html only"
+    )  # no plain part: the visible text of the HTML, never the attachment
 
 
 def test_calendar_oddities_never_produce_naive_times_or_crashes() -> None:

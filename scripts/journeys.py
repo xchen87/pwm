@@ -3,6 +3,7 @@
 Each takes (api, check, run). Add a journey whenever a slice adds user-visible behaviour.
 """
 
+import hashlib
 import http.client
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -203,7 +204,11 @@ def journey_50_google_sign_in_and_sync(api: Any, check: Any, run: Any) -> None:
         "Google is offered when the server is configured",
     )
 
-    status, to_google = _hop(f"{api.base}/auth/google/start?redirect=pwm%3A%2F%2Fauth")
+    verifier = "f" * 64
+    challenge = hashlib.sha256(verifier.encode()).hexdigest()
+    status, to_google = _hop(
+        f"{api.base}/auth/google/start?redirect=pwm%3A%2F%2Fauth&challenge={challenge}"
+    )
     check(status == 302 and to_google.startswith(api.google), "sign-in sends the browser to Google")
     check(
         "code_challenge=" in to_google and "client_secret" not in to_google,
@@ -221,13 +226,16 @@ def journey_50_google_sign_in_and_sync(api: Any, check: Any, run: Any) -> None:
     )
     check(_hop(to_callback)[0] == 400, "a replayed callback is refused")
     check(
-        _hop(f"{api.base}/auth/google/start?redirect=https%3A%2F%2Fevil.example")[0] == 400,
+        _hop(
+            f"{api.base}/auth/google/start?redirect=https%3A%2F%2Fevil.example&challenge={challenge}"
+        )[0]
+        == 400,
         "foreign redirects are refused",
     )
 
     code = parse_qs(urlparse(to_app).query)["code"][0]
-    session = api.post("/auth/session", {"code": code})
-    api.post("/auth/session", {"code": code}, expect=400)
+    session = api.post("/auth/session", {"code": code, "verifier": verifier})
+    api.post("/auth/session", {"code": code, "verifier": verifier}, expect=400)
     api.token = session["token"]
     try:
         check(

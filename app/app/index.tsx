@@ -3,9 +3,18 @@ import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { type ConnectionsView, getConnections, getHome, type Home, recordVisit } from '../src/api/client';
+import {
+  ApiError,
+  type ConnectionsView,
+  getAuthConfig,
+  getConnections,
+  getHome,
+  type Home,
+  recordVisit,
+} from '../src/api/client';
 import { ChangeCard } from '../src/components/ChangeCard';
 import { Onboarding } from '../src/components/Onboarding';
+import { SignedOut } from '../src/components/SignedOut';
 import { color, space } from '../src/theme';
 import { dueLabel, heading, parties } from '../src/wording';
 
@@ -17,6 +26,8 @@ export default function YourWorld() {
   const router = useRouter();
   const [home, setHome] = useState<Home | null>(null);
   const [connections, setConnections] = useState<ConnectionsView | null>(null);
+  // null: signed in (or not yet known). Otherwise: signed out, and whether Google is on offer.
+  const [signedOut, setSignedOut] = useState<{ google: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -25,8 +36,15 @@ export default function YourWorld() {
       const current = await getConnections();
       setConnections(current);
       if (current.connected.length > 0 || current.understood > 0) setHome(await getHome());
+      setSignedOut(null);
       setError(null);
-    } catch {
+    } catch (problem) {
+      if (problem instanceof ApiError && problem.status === 401) {
+        // No session, or it ended. This screen must not depend on anything that needs one.
+        const config = await getAuthConfig().catch(() => ({ google: false }));
+        setSignedOut({ google: config.google });
+        return;
+      }
       setError('Can’t reach your world right now. Pull down to try again.');
     }
   }, []);
@@ -38,6 +56,8 @@ export default function YourWorld() {
         .then(load);
     }, [load]),
   );
+
+  if (signedOut) return <SignedOut googleAvailable={signedOut.google} onSignedIn={load} />;
 
   // Onboarding is for an empty world. With nothing connected but notes (or anything else)
   // still held, the user must be able to reach them, and the screen that deletes them.

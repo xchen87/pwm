@@ -5,6 +5,25 @@
     "version": "0.0.1"
   },
   "paths": {
+    "/auth/config": {
+      "get": {
+        "summary": "Config",
+        "description": "What a signed-out app needs to know to offer sign-in. Public by design.",
+        "operationId": "config_auth_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthConfig"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/google/start": {
       "get": {
         "summary": "Start",
@@ -17,6 +36,15 @@
             "schema": {
               "type": "string",
               "title": "Redirect"
+            }
+          },
+          {
+            "name": "challenge",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Challenge"
             }
           }
         ],
@@ -1297,11 +1325,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Delete Everything Me Delete"
+                  "$ref": "#/components/schemas/Deleted"
                 }
               }
             }
@@ -1738,6 +1762,24 @@
           "related"
         ],
         "title": "AssertionDetail"
+      },
+      "AuthConfig": {
+        "properties": {
+          "google": {
+            "type": "boolean",
+            "title": "Google"
+          },
+          "dev_login": {
+            "type": "boolean",
+            "title": "Dev Login"
+          }
+        },
+        "type": "object",
+        "required": [
+          "google",
+          "dev_login"
+        ],
+        "title": "AuthConfig"
       },
       "Available": {
         "properties": {
@@ -2234,6 +2276,24 @@
         "type": "object",
         "title": "Correction"
       },
+      "Deleted": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "google_access_revoked": {
+            "type": "boolean",
+            "title": "Google Access Revoked"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "google_access_revoked"
+        ],
+        "title": "Deleted"
+      },
       "EventIn": {
         "properties": {
           "name": {
@@ -2381,11 +2441,18 @@
             "maxLength": 200,
             "minLength": 10,
             "title": "Code"
+          },
+          "verifier": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 32,
+            "title": "Verifier"
           }
         },
         "type": "object",
         "required": [
-          "code"
+          "code",
+          "verifier"
         ],
         "title": "LoginCodeIn"
       },

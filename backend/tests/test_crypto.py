@@ -24,7 +24,7 @@ def test_a_value_cannot_be_used_for_another_purpose_or_altered() -> None:
     sealed = crypto.encrypt("secret body", "body")
     with pytest.raises(crypto.Undecryptable):
         crypto.decrypt(sealed, "token")
-    tampered = sealed[:-4] + ("AAAA" if not sealed.endswith("AAAA") else "BBBB")
+    tampered = sealed[:-6] + ("AAAAAA" if not sealed.endswith("AAAAAA") else "BBBBBB")
     with pytest.raises(crypto.Undecryptable):
         crypto.decrypt(tampered, "body")
 
@@ -43,3 +43,17 @@ def test_without_a_key_nothing_is_stored(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setenv("PWM_DATA_KEY", base64.b64encode(b"too short").decode())
     with pytest.raises(crypto.DataKeyMissing):
         crypto.encrypt("secret", "token")
+
+
+def test_a_value_names_the_key_that_sealed_it_and_old_keys_still_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    old_key = os.environ["PWM_DATA_KEY"]
+    sealed = crypto.encrypt("secret", "token")
+    assert sealed.split(":")[2] == crypto.key_id(base64.b64decode(old_key))
+    monkeypatch.setenv("PWM_DATA_KEY", base64.b64encode(os.urandom(32)).decode())
+    monkeypatch.setenv("PWM_DATA_KEYS_OLD", json.dumps([old_key]))
+    assert crypto.decrypt(sealed, "token") == "secret"
+    assert not crypto.sealed_with_current_key(sealed)

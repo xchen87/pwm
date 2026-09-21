@@ -24,6 +24,7 @@ from pwm.db.models import (
     Job,
     ModelCall,
     Notification,
+    OAuthToken,
     Person,
     PersonIdentifier,
     Source,
@@ -63,8 +64,9 @@ def ensure_user(session: Session, party: Party) -> User:
 
 
 def seal_record(record: SourceRecord) -> dict[str, Any]:
-    """The stored form of a record. With a data key configured, the body is encrypted:
-    metadata stays queryable, but a database dump does not contain anyone's mail."""
+    """The stored form of a record. With a data key configured, the body is encrypted, which
+    keeps the bulk of someone's mail out of a database dump. Metadata stays in the clear so
+    it can be queried, and so do evidence quotes and extracted values (see `pwm.crypto`)."""
     stored = record.model_dump(mode="json")
     if get_settings().data_key and stored.get("body"):
         stored["body"] = crypto.encrypt(stored["body"], "source-body")
@@ -75,6 +77,29 @@ def open_record(stored: dict[str, Any]) -> SourceRecord:
     if crypto.is_encrypted(stored.get("body")):
         stored = {**stored, "body": crypto.decrypt(stored["body"], "source-body")}
     return SourceRecord.model_validate(stored)
+
+
+def reseal(session: Session) -> int:
+    """Bring everything stored under the current data key: bodies that were ingested before
+    a key existed, and bodies and tokens sealed under a previous key. Run after setting or
+    rotating PWM_DATA_KEY (with the previous key listed in PWM_DATA_KEYS_OLD)."""
+    changed = 0
+    for source in session.scalars(select(Source)):
+        body = source.record.get("body")
+        if not body:
+            continue
+        if crypto.is_encrypted(body):
+            if crypto.sealed_with_current_key(body):
+                continue
+            body = crypto.decrypt(body, "source-body")
+        source.record = {**source.record, "body": crypto.encrypt(body, "source-body")}
+        changed += 1
+    for token in session.scalars(select(OAuthToken)):
+        if not crypto.sealed_with_current_key(token.refresh_token_encrypted):
+            plain = crypto.decrypt(token.refresh_token_encrypted, "google-refresh")
+            token.refresh_token_encrypted = crypto.encrypt(plain, "google-refresh")
+            changed += 1
+    return changed
 
 
 def ingest(

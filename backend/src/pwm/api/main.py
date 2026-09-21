@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from pwm import crypto
 from pwm.api.ask import router as ask_router
 from pwm.api.auth import router as auth_router
 from pwm.api.commitments import router as commitments_router
@@ -41,6 +42,17 @@ async def _provider_unavailable(request: Request, error: Exception) -> JSONRespo
         status_code=503, content={"detail": "The model provider is unavailable. Try again shortly."}
     )
 
+
+async def _unreadable(request: Request, error: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Stored data cannot be read right now. Nothing has been lost."},
+    )
+
+
+# A missing or rotated data key must not look like a crash, and must not change anything.
+app.add_exception_handler(crypto.DataKeyMissing, _unreadable)
+app.add_exception_handler(crypto.Undecryptable, _unreadable)
 
 for _error in provider_errors():
     app.add_exception_handler(_error, _provider_unavailable)

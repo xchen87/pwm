@@ -5,7 +5,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session, aliased
 
-from pwm import clock, review
+from pwm import clock, crypto, review
 from pwm.api.deps import CurrentUser, DbSession
 from pwm.api.schemas import (
     AssertionDetail,
@@ -26,13 +26,16 @@ CONTEXT_CHARS = 280
 
 
 def _source_summary(assertion: Assertion) -> SourceSummary:
-    record = open_record(assertion.source.record)
+    # Straight from the stored metadata, which is never encrypted: listing what is known
+    # must keep working even when message bodies cannot be read.
+    record = assertion.source.record
+    sender = record.get("sender") or {}
     return SourceSummary(
-        kind=record.kind.value,
-        sender_name=record.sender.name if record.sender else None,
-        sender_address=record.sender.address if record.sender else None,
-        subject=record.subject,
-        observed_at=record.observed_at,
+        kind=record["kind"],
+        sender_name=sender.get("name"),
+        sender_address=sender.get("address"),
+        subject=record.get("subject") or "",
+        observed_at=record["observed_at"],
     )
 
 
@@ -108,8 +111,11 @@ def _load(session: Session, user: User, assertion_id: UUID) -> Assertion:
 def _context(assertion: Assertion) -> tuple[str, str, str]:
     """The evidence in its surroundings, as (before, quote, after), all normalized the same
     way so the app can highlight the quote without guessing at whitespace or quote marks."""
-    record = open_record(assertion.source.record)
     quote = normalize(assertion.evidence_quote)
+    try:
+        record = open_record(assertion.source.record)
+    except (crypto.DataKeyMissing, crypto.Undecryptable):
+        return "", quote, ""  # the quote is still evidence; its surroundings are unreadable
     text = normalize(visible_body(record))
     if quote not in text:
         text = normalize(visible_text(record))

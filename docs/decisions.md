@@ -245,3 +245,21 @@ Disconnecting a Google source deletes what it brought in; when the last one goes
 
 ### D61. Dependencies added
 `httpx` (HTTP client; already present for tests) and `cryptography` (AES-GCM). In the app: `expo-web-browser` (system-browser auth sessions) and `expo-secure-store` (Keychain/Keystore), both part of the Expo SDK. The fake Google parses form bodies by hand so that test tooling adds no dependency.
+
+## 2026-09-21 — Slice 4 review outcomes
+
+### D62. The login code is bound to the app that started the sign-in (extends D56)
+PKCE protects the leg between us and Google. The leg between us and the app needed the same idea: the app generates a secret, sends its SHA-256 to `/auth/google/start`, and must present the secret to `/auth/session`. That one mechanism closes two holes the review found: another app registered for `pwm://` intercepting the code, and login CSRF (a link that signs the victim into the attacker's account). An app holding no secret refuses to redeem anything. Redirects are matched exactly (scheme, host, path), never by prefix; Expo Go's address is accepted only in `local`. A sign-in attempt is spent, and the spend committed, before Google is called.
+
+### D63. Connections are created by users, never by jobs
+A queued job is a promise made in the past. It may act on a connection that still exists; it may never bring one back. Disconnecting deletes that connection's pending jobs, there is at most one pending sync per connection, and a job is `running` while it runs so its own follow-up page is not mistaken for a duplicate.
+
+### D64. Syncs recur, fail visibly, and recover from stale cursors
+`cli tick` queues a sync for every healthy connection older than `PWM_SYNC_MINUTES` — without it nothing would ever be read after the first backfill. A sync that fails for good sets the connection to `error` with the exception class. Stale Gmail page tokens and Calendar sync tokens restart the read rather than wedge the cursor. 403 is retried, because Google reports rate limits that way.
+
+### D65. What a calendar version may say
+An edited event is a new immutable source (D58), but only a version that says something new speaks: a cancelled latest version silences the event, and an older version is silent when its successor has the same time. So a moved meeting is a change, while an RSVP or a description edit is nothing.
+
+### D66. Keys have ids, reads do not need them, and revocation is reported honestly (revises D57)
+`enc:v2:<key id>:…`; old keys listed in `PWM_DATA_KEYS_OLD` still read; `cli reseal` brings plaintext-era bodies and old-key values under the current key. Listing and inspecting what is known uses clear metadata and degrades to "quote without surroundings" when bodies cannot be read; anything that would reprocess returns 503 and changes nothing. If our copy of a grant is unreadable we cannot ask Google to revoke it, so "delete everything" says `google_access_revoked: false` instead of implying otherwise.
+Stated plainly, because an earlier comment overstated it: evidence quotes and extracted values are stored in the clear. Encrypting bodies keeps the bulk of someone's mail out of a database dump; it does not make a dump harmless.

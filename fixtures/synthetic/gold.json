@@ -850,24 +850,6 @@
       "validity": "current"
     },
     {
-      "source_id": "c_denver",
-      "kind": "event",
-      "subject": "Denver conference",
-      "predicate": "date",
-      "value": "2026-10-12T00:00",
-      "evidence_quote": "Denver conference",
-      "origin": "source_explicit",
-      "valid_from": null,
-      "valid_to": null,
-      "commitment_type": null,
-      "direction": null,
-      "committed_by": null,
-      "committed_to": null,
-      "due": null,
-      "id": "g_c_denver",
-      "validity": "expired"
-    },
-    {
       "source_id": "c_lease_end",
       "kind": "event",
       "subject": "Lease ends (4B)",

@@ -32,7 +32,9 @@ class Settings(BaseSettings):
     # Public URL of this API, used to build the OAuth callback address.
     public_url: str = "http://localhost:8000"
     # Where the app may be sent after sign-in. Anything else is refused (no open redirects).
-    app_redirects: list[str] = ["pwm://auth", "http://localhost:8081/auth", "exp://"]
+    # Exact matches only (scheme, host, path). Expo Go's exp://<host>/--/auth is accepted in
+    # a local environment and nowhere else.
+    app_redirects: list[str] = ["pwm://auth", "http://localhost:8081/auth"]
     # Overridable so tests and local development can point at a stand-in for Google.
     google_auth_url: str = "https://accounts.google.com/o/oauth2/v2/auth"
     google_token_url: str = "https://oauth2.googleapis.com/token"
@@ -40,10 +42,14 @@ class Settings(BaseSettings):
     google_userinfo_url: str = "https://openidconnect.googleapis.com/v1/userinfo"
     google_api_url: str = "https://www.googleapis.com"
     backfill_days: int = 90
+    # How often `pwm.cli tick` asks each connection for what is new.
+    sync_minutes: int = 15
 
     # Base64 of 32 random bytes. Encrypts refresh tokens and message bodies at rest.
     # How to generate one: docs/env.md.
     data_key: str | None = None
+    # Previous keys, still accepted for reading, so the key can be rotated (see `cli reseal`).
+    data_keys_old: list[str] = []
 
     @property
     def google_configured(self) -> bool:

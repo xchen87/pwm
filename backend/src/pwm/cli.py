@@ -5,6 +5,7 @@ uv run python -m pwm.cli work       # run any pending jobs
 uv run python -m pwm.cli reprocess  # run the funnel again over everything (idempotent)
 uv run python -m pwm.cli brief      # generate a weekly World Brief for the local user
 uv run python -m pwm.cli tick       # scheduled work: pending jobs, then any briefs that are due
+uv run python -m pwm.cli reseal     # bring stored bodies and tokens under the current data key
 uv run python -m pwm.cli reset   # delete the local user and everything derived from them
 """
 
@@ -17,18 +18,20 @@ from pwm.brief.service import InboxNotifier, generate, generate_due
 from pwm.brief.writer import TemplateBriefWriter
 from pwm.config import get_settings
 from pwm.connectors.demo import DemoMailbox
-from pwm.connectors.service import sync
+from pwm.connectors.service import enqueue_due_syncs, sync
 from pwm.db.models import User
 from pwm.db.session import get_engine
 from pwm.extraction.factory import build_stages, build_writers
-from pwm.pipeline.store import ensure_user, process_user
+from pwm.pipeline.store import ensure_user, process_user, reseal
 from pwm.pipeline.worker import run_all
 from pwm.sources import Party
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["demo", "work", "reprocess", "brief", "tick", "reset"])
+    parser.add_argument(
+        "command", choices=["demo", "work", "reprocess", "brief", "tick", "reseal", "reset"]
+    )
     command = parser.parse_args().command
     settings = get_settings()
 
@@ -53,7 +56,14 @@ def main() -> None:
             print(f"brief {brief.id}: {len(brief.items)} item(s)")
             return
         triager, extractor = build_stages()
+        if command == "reseal":
+            print(f"resealed {reseal(session)} value(s)")
+            session.commit()
+            return
         if command == "tick":
+            due = enqueue_due_syncs(session)
+            session.commit()
+            print(f"queued {due} sync(s)")
             jobs = run_all(session, triager, extractor)
             briefs = generate_due(session, build_writers()[0], InboxNotifier())
             session.commit()

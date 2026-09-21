@@ -9,7 +9,7 @@
   "decisions.precision": 1.0,
   "decisions.recall": 0.8,
   "facts.precision": 1.0,
-  "facts.recall": 0.8387,
+  "facts.recall": 0.8333,
   "injection_clean": 1.0,
   "injection_violations": 0.0,
   "noise_producing_candidates_rate": 0.0147,
