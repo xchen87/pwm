@@ -28,10 +28,22 @@ Working constraint (founder, 2026-09-21): reach a showable, demo-ready MVP **wit
 | Live LLM evaluation | blocked: **needs founder** (API key + spend approval) | |
 
 ## Waiting on the founder
-These do not block the demo-ready goal, but nothing can replace them:
-1. **Google Cloud project + restricted-scope verification** (decisions D15). Long lead time; gates the beta, not the demo.
-2. **Golden set**: label ~200 threads of your own mail with `uv run python -m pwm_eval.golden <mbox>`. The only honest benchmark.
-3. **Model API key + spend approval** for `pwm_eval.run --system anthropic --allow-spend`. Until then every score comes from the rule-based stand-in and says nothing about real-world quality.
+None of these blocks the demo. Each one is a hard stop for the step named, and nothing can stand in for it.
+
+| What | Why only you | What it unblocks |
+|---|---|---|
+| **Model API key + approval to spend** (`uv run python -m pwm_eval.run --system anthropic --allow-spend`) | It is your account and your money; the run sends the synthetic mailbox's text to the provider. Rough size: about 75 extraction calls plus triage calls — an estimate, not a measurement. | The first real quality numbers; whether Haiku triage ever caches; tuning the prompt. Until then **every score comes from rules I wrote against mail I wrote**. |
+| **Label ~200 threads of your own mail** (`uv run python -m pwm_eval.golden <takeout.mbox>`; stays on this machine, gitignored) | Only you can judge what in your inbox is a real commitment or decision. | The only honest benchmark. Also the evidence for the Decision Memory gate. |
+| **Google Cloud project + OAuth client, and start restricted-scope verification** (decisions D15) | Needs your Google account and identity; verification and the annual security assessment take weeks to months. | All of Slice 4: real Gmail/Calendar, accounts, encrypted tokens, sender authentication (D32/D42 residual). Writing that code blind was deliberately avoided. |
+| **Expo account; Apple and Google developer accounts** | Store and TestFlight builds are tied to them. | Slice 5: installed phone apps and real push. |
+| **Try it on a phone with Expo Go** (`docs/local-dev.md`) | This machine has no Android SDK or emulator. | Closes the one open Slice 1 acceptance item ("runs in an emulator from the same code"). |
+| **Open the gates or not**: passive Decision Memory, Customer Advocate drafts | Product scope is yours (CLAUDE.md). | Slices 7–8. Evidence so far: decisions are rare even in the synthetic mail (5 in 122), and consumer issues already surface as brief items. |
+
+## How to resume
+1. Read this file's status table, then the last log entry.
+2. `scripts/verify.sh` must be green before and after any change.
+3. `scripts/demo.sh --loaded` and `docs/demo-script.md` show what exists.
+4. Follow the discipline at the top for every major step, and record findings here.
 
 ## Log
 
@@ -116,3 +128,5 @@ Reviewer confirmed sound: forget/ownership checks, double-remember, correction c
 - Checked: no Android SDK on this machine, so the emulator acceptance item stays open; Expo Go on a phone is the quickest route.
 
 **Demo-readiness independent review.** Started over `00a624e..42d8ea7` (rewritten persistence, connections, Google normalization, model-backed writers, scheduled briefs, scripts, new app screens), including whether the earlier fixes actually hold. Findings and dispositions will be recorded below.
+
+**Clean-checkout check.** Cloned the repository into a scratch directory, installed from the lockfiles only (`uv sync`, `npm ci`), and ran `scripts/verify.sh --quick`: **ALL GREEN** (161 tests, eval gate, app checks). One thing learned: `docker compose` in a differently named directory starts a second, unused database container; removed it. Also: selecting the model path without credentials now fails with a clear message, and provider failures reach the app as a generic 503 rather than a 500 (the provider's own error text can quote the request, so it is never passed on).
