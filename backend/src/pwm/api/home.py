@@ -18,6 +18,7 @@ from pwm.extraction.factory import build_writers
 router = APIRouter()
 FIRST_VISIT_LOOKBACK = timedelta(days=14)
 NEEDS_ATTENTION_PREVIEW = 3
+SAME_VISIT = timedelta(hours=6)
 # Home stays calm: the few changes that matter most, with the rest in the brief.
 WHAT_CHANGED_PREVIEW = 4
 
@@ -93,8 +94,8 @@ def home(session: DbSession, user: CurrentUser) -> Home:
 def record_visit(session: DbSession, user: CurrentUser) -> dict[str, str]:
     """Called when the app comes to the foreground. Moves the "since last visit" marker."""
     now = clock.now()
-    # Re-opening the app within the hour is the same visit: it must not wipe "what changed".
-    if user.last_seen_at is None or now - user.last_seen_at > timedelta(hours=1):
+    # Coming back the same day is the same visit: it must not wipe "what changed".
+    if user.last_seen_at is None or now - user.last_seen_at > SAME_VISIT:
         user.previous_seen_at = user.last_seen_at
     user.last_seen_at = now
     session.commit()

@@ -171,3 +171,18 @@ Retrieval is plain code over one user's live assertions: intent detection (mine 
 
 ### D41. Connections own their data
 Every source records the connector that brought it in. Disconnecting deletes exactly those sources, rebuilds what is left (people only they mentioned disappear; notes the user typed stay), and removes the connection. "Delete everything" deletes the user row and relies on cascade, which a test verifies table by table. Gmail and Calendar payload normalization exists as pure functions (`connectors/google.py`, plain-text part only, `Authentication-Results` header kept for the sender-spoofing work in D32); the OAuth flow, fetching, encrypted token storage, and accounts are deliberately not written blind — they need a Google OAuth client to build against.
+
+## 2026-09-21 — Slices 2–3 review outcomes
+
+### D42. Inferred identity confers no authority (tightens D22 and D32)
+An inferred link between two addresses is a *suggestion*: it groups people in the UI and can be split. It does not let the second address update what the first one said, because the evidence for the link (a display name and a self-written signature) is exactly what an impersonator controls. Authority comes only from links the user made by hand. Calendar entries are not the user's own statements either: a connector files every event under the calendar's owner, including invitations from strangers, and an invitation does not make its sender known.
+**Cost accepted:** a contact's genuine new address produces "two sources disagree" until the user confirms the link. That is the right failure direction.
+
+### D43. One bad message never stops a mailbox
+Anything that can be malformed by a sender (length, characters, structure) is bounded or rejected at construction, and a validation failure is confined to the source that caused it. Only provider failures fail a job, because those are worth retrying.
+
+### D44. Unreviewed rows are always current; reviewed rows are the user's
+Each run refreshes unreviewed assertions with the current extraction, rules, and sender trust, recomputes supersession from scratch (a rejected replacement replaces nothing), rebuilds pipeline-made relations, and prunes stored briefs of anything whose assertion is gone. Rows the user confirmed, rejected, or corrected keep their content and their verdict; a rephrased quote from a new model maps onto them instead of creating a twin. Facts sharing a quote are matched by what they say, not by position.
+
+### D45. Migrations are tested against data
+`backend/tests/test_migrations.py` loads a database at an earlier revision with the awkward rows (a correction and its original), upgrades to head, downgrades, and upgrades again. Migrating an empty database proves nothing.

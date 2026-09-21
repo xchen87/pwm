@@ -20,8 +20,8 @@ Working constraint (founder, 2026-09-21): reach a showable, demo-ready MVP **wit
 | Phase 0 — scaffolding, fixture, adversarial set, eval harness, threat model | done | commit `0411ba5` |
 | Slice 1 — Commitment Radar | done; independently reviewed, 15 findings fixed | commits `02c1c86` + review-fix commit; verify green |
 | Progress tracking + verify gate + functional journeys + eval regression gate | done | this file; `scripts/verify.sh` |
-| Slice 2 — What changed + World Brief | built (backend + app); **independent review in progress** | commit `00a624e`; verify green |
-| Slice 3 — Ask Your World + Remember / Correct / Forget | built (backend + app); **independent review in progress** | commit `00a624e`; verify green |
+| Slice 2 — What changed + World Brief | done; independently reviewed, findings fixed | commits `00a624e` + review-fix commit; verify green |
+| Slice 3 — Ask Your World + Remember / Correct / Forget | done; independently reviewed, findings fixed | same |
 | Demo readiness — onboarding, connections/disconnect/delete, demo launcher and script, in-browser checks | built | commit `926d450` + next; verify green (122 tests, 87 functional checks incl. the built app in headless Chrome) |
 | Slice 4 — accounts, real Gmail/Calendar | connector protocol, demo connector, Gmail/Calendar payload normalization built and tested; **OAuth, fetching, token storage, accounts need a Google OAuth client — founder** | commit `926d450` |
 | Slice 5 — phone builds, real push | not started; store/TestFlight builds **need founder** (Expo / Apple / Google accounts) | |
@@ -85,4 +85,28 @@ Reviewer confirmed sound: ownership checks, the `user_stated` gate, ingestion id
 **Demo readiness.** Connector protocol; demo-mailbox connector (newest first, resumable cursor); Gmail/Calendar payload normalization as pure tested functions; `connections` table and `sources.connector`; sync / disconnect / delete-everything; onboarding screen ("Connect your life") and a "Connections and your data" screen; `scripts/demo.sh` (starts at onboarding; `--loaded`, `--keep`); `docs/demo-script.md`. The functional test now also builds the production web app against the test server and checks in headless Chrome that a new user sees onboarding and that, after connecting, Your World shows a real hedged change with a readable amount. Two process bugs found and fixed along the way: `trap 'kill 0'` in the launcher killed its parent's process group; Metro's cache kept a stale `EXPO_PUBLIC_API_URL` baked into the bundle (`--clear`). Commit `926d450`.
 - `scripts/verify.sh`: **ALL GREEN** — 122 backend/eval tests, 8 app tests, 87 functional checks.
 
-**Slices 2–3 independent review.** Started over `02c1c86..00a624e`. Findings and dispositions will be recorded below.
+**Slices 2–3 independent review.** A second separate reviewer examined `02c1c86..00a624e` against a frozen snapshot, reproducing 14 of 15 findings with probes. All were real. Dispositions:
+
+| # | Sev | Finding | Disposition |
+|---|---|---|---|
+| 1 | high | An impersonator with a compatible display name and the right surname in their message inherited the real sender's identity (inferred link) and could **supersede** their facts | **Fixed.** Inferred links confer no authority. Only links the user made by hand let a second address update a fact; otherwise it is a contradiction. Regression test with the reviewer's scenario. Cost: Priya's genuine second address now disputes rather than replaces until the user confirms the link. |
+| 2 | high | The new length bounds raised inside the funnel for rule-based, calendar and note candidates: one long sentence or subject failed **every** run for that user | **Fixed.** Code-made candidates are bounded at construction; run-on sentences are skipped; a validation failure is isolated to its source (`outcome.failed`) and never stops the mailbox. Provider errors still propagate so jobs retry. Test. |
+| 3 | high | Migration 0003 failed on any database holding a correction (key collision), mislabelled user relations as pipeline-made, and could not be downgraded | **Fixed.** Ordinals are numbered per (source, kind, quote); correction relations become `made_by = user`; constraint drops are `IF EXISTS`; the old key is deliberately not restored on downgrade. **New test migrates a populated database** up, down and up again — the first version of the fix failed that test, which is why it exists. |
+| 4 | med | Forgetting a note or deleting a source left its text inside stored briefs | **Fixed.** Briefs are pruned on every run; an emptied brief is deleted. Test uses the reviewer's scenario. |
+| 5 | med | `remember` returned 500 for notes starting with ">" or containing markup, and a raw validation dump for long notes | **Fixed.** A user's note is visible text from first character to last; long notes are evidenced by their opening; errors are generic. Test. |
+| 6 | med | Dismissing a wrong "update" left the original superseded: no live fact at all | **Fixed.** Supersession is recomputed each run; a rejected replacement replaces nothing; pointers to user corrections are untouched. Test. |
+| 7 | med | Matched rows were never refreshed, so rule fixes and changed trust never reached existing rows | **Fixed.** Unreviewed rows always take the current extraction; confidence is refreshed for all. Test. |
+| 8 | med | A confirmed row got an unreviewed twin when a new model rephrased the quote | **Fixed.** The rephrase guard covers confirmed rows too and keeps them in the run. Test. |
+| 9 | med | Positional ordinals let a surviving fact be swallowed by a dismissed sibling | **Fixed.** Siblings sharing a quote are matched by what they say. Test. |
+| 10 | med | Ask refused ordinary questions ("show me my deadlines", "what am I owed", typos) and named a stemmed fragment | **Fixed.** Wider stop/intent vocabulary, fuzzy matching for typos, refusal quotes the user's own word. 8 parametrized tests from the reviewer's table. |
+| 11 | med | A superseded confirmed commitment was shown first and unhedged; "before Friday" triggered history mode | **Fixed.** Replaced facts read "Earlier: … — later replaced"; history needs explicit past wording. Tests. |
+| 12 | med | An unsolicited calendar invite made its sender "known" → high confidence | **Fixed.** Only mail the user sent establishes a relationship. Calendar entries are also no longer treated as the user's own statements. Test. |
+| 13 | low-med | "What changed" judged by when mail was sent, not when it was learned; a 61-minute pause reset it | **Fixed.** Uses learned-at with a 30-day floor; same-visit window is 6 hours. |
+| 14 | low | `inf` / `nan` amounts crashed brief rendering | **Fixed.** Test. |
+| 15 | low | Conflicts hidden behind due-soon; stacked notifications; unhandled rejection in the Brief screen; missing baseline passed the gate; cache snapshot before the lock | **All fixed.** Tests for the first, second and fourth. |
+
+Reviewer confirmed sound: forget/ownership checks, double-remember, correction chains, stale-row retirement, the pipeline never writing `review`, memory and `user_stated` gates, low-confidence exclusion from Ask and briefs, hedged wording, generic notification title, no content in worker errors, input validation on new endpoints, fixed clock everywhere time matters, first/second/third visit logic, verify and demo scripts.
+
+- `scripts/verify.sh`: **ALL GREEN** — 155 backend/eval tests (incl. populated-database migration test), 8 app tests, 87 functional checks; eval gate no regression across 24 scores.
+
+**Also built while the review ran:** scheduled briefs (`pwm.cli tick`, D40); model-backed brief writer and reasoner with code-side guards, never run live (D39).

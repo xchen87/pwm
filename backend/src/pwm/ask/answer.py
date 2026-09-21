@@ -29,16 +29,19 @@ def _date(fact: Fact) -> str:
 
 
 def _line(fact: Fact) -> str:
-    hedge = "" if fact.is_fact else "Possibly: "
+    # Something that was later replaced is history, however it was reviewed at the time.
+    if fact.superseded:
+        hedge, old = "Earlier: ", " — later replaced"
+    else:
+        hedge, old = ("" if fact.is_fact else "Possibly: "), ""
     if fact.kind == "commitment":
         who = "you" if fact.direction == "by_user" else (fact.committed_by or "someone")
-        return f"{hedge}{who}: {fact.value}{_date(fact)}"
+        return f"{hedge}{who}: {fact.value}{_date(fact)}{old}"
     if fact.kind == "decision":
-        return f"{hedge}{fact.evidence_quote}"
+        return f"{hedge}{fact.evidence_quote}{old}"
     if fact.kind == "memory":
         return f"You told me: {fact.value}"
     change = f" (previously {fact.previous_value})" if fact.previous_value else ""
-    old = " — this was later replaced" if fact.superseded else ""
     return f"{hedge}{fact.subject} — {fact.predicate.replace('_', ' ')}: {fact.value}{change}{old}"
 
 

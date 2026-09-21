@@ -192,3 +192,56 @@ def test_a_lookalike_of_the_user_is_never_the_user() -> None:
     assert [(a.candidate.direction.value, a.confidence.value) for a in result.assertions] == [
         ("to_user", "low")
     ]
+
+
+def test_an_impersonator_with_the_right_name_cannot_replace_a_trusted_fact() -> None:
+    dentist = Party(name="James Amari", address="office@amaridental.example")
+    real = SourceRecord(
+        id="real", kind=SourceKind.EMAIL, observed_at=datetime(2026, 9, 1, tzinfo=UTC), thread_id="t1",
+        sender=dentist, recipients=(USER,), subject="Your appointment",
+        body="Your appointment is booked for October 6 at 3:00 PM.",
+    )  # fmt: skip
+    fake = real.model_copy(
+        update={
+            "id": "fake", "thread_id": "t2", "observed_at": datetime(2026, 9, 2, tzinfo=UTC),
+            "sender": Party(name="James Amari", address="j.amari@evil.example"),
+            "body": "This is Dr. Amari. Your appointment is rescheduled to October 20 at 9:00 AM.",
+        }
+    )  # fmt: skip
+    result = run_pipeline([real, fake], USER, AlwaysRelevant(), HeuristicExtractor())
+    genuine = next(a for a in result.assertions if a.candidate.source_id == "real")
+    assert genuine.superseded_by is None
+    assert [r.type.value for r in result.relations] == ["contradicts"]
+
+
+def test_one_hostile_message_cannot_stop_the_rest_of_the_mailbox() -> None:
+    runaway = email("I'll send " + "word " * 400)
+    huge_subject = email("Your appointment is on October 6 at 3:00 PM.").model_copy(
+        update={"id": "m2", "subject": "appointment " * 60}
+    )
+    invite = SourceRecord(
+        id="c1", kind=SourceKind.CALENDAR_EVENT, observed_at=datetime(2026, 9, 1, tzinfo=UTC),
+        sender=USER, subject="Planning " * 80, starts_at=datetime(2026, 9, 9, 10, tzinfo=UTC),
+    )  # fmt: skip
+    fine = email("I'll send the contract by Friday.").model_copy(update={"id": "m3"})
+    result = run_pipeline(
+        [runaway, huge_subject, invite, fine], USER, AlwaysRelevant(), HeuristicExtractor()
+    )
+    assert any(a.candidate.source_id == "m3" for a in result.assertions)
+    assert all(len(a.candidate.evidence_quote) <= 1000 for a in result.assertions)
+
+
+def test_an_unsolicited_calendar_invite_does_not_make_its_sender_known() -> None:
+    stranger = Party(name="Pat", address="x@evil.example")
+    invite = SourceRecord(
+        id="c1", kind=SourceKind.CALENDAR_EVENT, observed_at=datetime(2026, 9, 1, tzinfo=UTC),
+        sender=USER, recipients=(stranger,), subject="Sync",
+        starts_at=datetime(2026, 9, 9, 10, tzinfo=UTC),
+    )  # fmt: skip
+    bill = email("Your payment of $900 is due September 15.").model_copy(
+        update={"sender": stranger}
+    )
+    result = run_pipeline([invite, bill], USER, AlwaysRelevant(), HeuristicExtractor())
+    assert [a.confidence.value for a in result.assertions if a.candidate.source_id == "m1"] == [
+        "medium"
+    ]

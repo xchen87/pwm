@@ -2,7 +2,7 @@
 
 import re
 
-from pwm.sources import SourceRecord
+from pwm.sources import SourceKind, SourceRecord
 
 _REPLY_HEADER = re.compile(r"^On .{5,200} wrote:\s*$")
 _FORWARD_MARKER = re.compile(r"^-{2,}\s*(Original|Forwarded) [Mm]essage\s*-{2,}")
@@ -74,6 +74,10 @@ def strip_quoted_replies(body: str) -> str:
 
 
 def visible_body(source: SourceRecord) -> str:
+    if source.kind is SourceKind.USER_CAPTURE:
+        # The user's own note is theirs from first character to last: a line starting with
+        # ">" or an angle bracket is what they typed, not a quoted reply or hidden markup.
+        return source.body.strip()
     return strip_quoted_replies(strip_hidden_markup(source.body)).strip()
 
 

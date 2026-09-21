@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -59,7 +59,9 @@ def test_confirmed_commitments_due_soon_lead_the_brief(session: Session, world: 
     ).one()
     review.confirm(session, world, tax.id)
     items = select_items(session, world, SINCE, NOW)
-    assert items[0].kind is ItemKind.DUE_SOON and items[0].assertion_id == tax.id
+    # Disputes come first; then what the user confirmed and is due; guesses after that.
+    ranked = [i for i in items if i.kind is not ItemKind.CONFLICT]
+    assert ranked[0].kind is ItemKind.DUE_SOON and ranked[0].assertion_id == tax.id
 
 
 def test_dismissed_items_and_low_confidence_guesses_stay_out(session: Session, world: User) -> None:
@@ -117,7 +119,7 @@ def test_what_changed_is_measured_from_the_previous_visit(
     client.post("/visits")
     client.post("/visits")  # same visit: must not wipe what changed
     assert client.get("/home").json()["what_changed"]
-    world.previous_seen_at = NOW  # a later visit, after everything was seen
+    world.previous_seen_at = NOW + timedelta(minutes=1)  # a later visit, after everything was seen
     session.commit()
     assert client.get("/home").json()["what_changed"] == [
         w
@@ -152,3 +154,25 @@ def test_a_user_with_nothing_to_report_gets_no_brief(session: Session, user: Use
 
     assert service.generate_due(session, TemplateBriefWriter(), service.InboxNotifier()) == 0
     assert session.scalars(select(Brief)).all() == []
+
+
+def test_nonsense_amounts_never_break_a_brief() -> None:
+    from pwm.brief.writer import readable
+
+    for value in ("inf", "1e999", "nan", "-inf"):
+        assert readable("quote", value) == value
+
+
+def test_a_second_brief_does_not_stack_a_second_unread_notification(
+    session: Session, world: User
+) -> None:
+    writer, notifier = TemplateBriefWriter(), service.InboxNotifier()
+    service.generate(session, world, writer, notifier, "weekly", SINCE)
+    service.generate(session, world, writer, notifier, "weekly", SINCE)
+    assert len(session.scalars(select(Notification)).all()) == 1
+
+
+def test_a_disputed_date_is_shown_as_a_dispute_not_hidden_behind_due_soon() -> None:
+    from pwm.brief.items import PRIORITY
+
+    assert PRIORITY[ItemKind.CONFLICT] < PRIORITY[ItemKind.DUE_SOON]

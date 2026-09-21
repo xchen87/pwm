@@ -63,7 +63,9 @@ def main() -> None:
 
     system = PipelineSystem("pipeline-heuristic", HeuristicTriager(), HeuristicExtractor())
     current = flatten(evaluate(system, load_fixture()))
-    if args.update or not BASELINE.exists():
+    if not args.update and not BASELINE.exists():
+        raise SystemExit(f"no baseline at {BASELINE}: a missing baseline is a failure, not a pass")
+    if args.update:
         BASELINE.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
         print(f"baseline written: {BASELINE}")
         return

@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -257,3 +258,148 @@ def test_new_mail_after_a_finished_job_is_always_queued(session: Session, user: 
     assert ingest(session, user, [same_time]) == 1
     session.commit()
     assert run_next(session, HeuristicTriager(), HeuristicExtractor())
+
+
+class Versioned(HeuristicExtractor):
+    """Returns whatever candidates it is given, under a chosen method name."""
+
+    def __init__(self, method: str, make: object) -> None:
+        self.method, self._make = method, make
+
+    def extract(self, request: ExtractionRequest) -> ExtractionResult:
+        return ExtractionResult(candidates=tuple(self._make(request)))  # type: ignore[operator]
+
+
+def _commitment(request: ExtractionRequest, quote: str, value: str, due: str | None = None):  # type: ignore[no-untyped-def]
+    from datetime import date
+
+    from pwm.extraction.candidates import (
+        Candidate,
+        CandidateKind,
+        CommitmentType,
+        Direction,
+        Origin,
+    )
+
+    return Candidate(
+        source_id=request.source.id, kind=CandidateKind.COMMITMENT, subject="Alex", predicate="committed_to",
+        value=value, evidence_quote=quote, origin=Origin.SOURCE_EXPLICIT, commitment_type=CommitmentType.PROMISE,
+        direction=Direction.BY_USER, due=date.fromisoformat(due) if due else None,
+    )  # fmt: skip
+
+
+def _one_mail(session: Session, user: User, body: str) -> None:
+    from pwm.sources import Party, SourceKind, SourceRecord
+
+    record = SourceRecord(
+        id="only", kind=SourceKind.EMAIL, observed_at=datetime(2026, 9, 1, tzinfo=UTC), thread_id="t",
+        sender=Party(name=user.name, address=user.email), recipients=(Party(name="Tom", address="tom@x.example"),),
+        subject="report", body=body,
+    )  # fmt: skip
+    ingest(session, user, [record])
+
+
+def _rows(session: Session) -> list[Assertion]:
+    return list(session.scalars(select(Assertion).order_by(Assertion.ordinal)))
+
+
+def test_reprocessing_refreshes_unreviewed_rows_with_the_current_rules(
+    session: Session, user: User
+) -> None:
+    _one_mail(session, user, "I will send the report by Friday.")
+    quote = "I will send the report by Friday."
+    v1 = Versioned("v1", lambda r: [_commitment(r, quote, "send the report", "2026-09-04")])
+    v2 = Versioned("v2", lambda r: [_commitment(r, quote, "send the report", "2026-09-11")])
+    process_user(session, user, HeuristicTriager(), v1)
+    process_user(session, user, HeuristicTriager(), v2)
+    (row,) = _rows(session)
+    assert (row.due.isoformat(), row.extraction_method) == ("2026-09-11", "v2")  # type: ignore[union-attr]
+
+
+def test_a_confirmed_fact_is_not_duplicated_when_a_new_model_rephrases_the_quote(
+    session: Session, user: User
+) -> None:
+    _one_mail(session, user, "I will send the report by Friday.")
+    v1 = Versioned(
+        "v1", lambda r: [_commitment(r, "I will send the report by Friday.", "send the report")]
+    )
+    v2 = Versioned(
+        "v2", lambda r: [_commitment(r, "I will send the report by Friday", "send the report")]
+    )
+    process_user(session, user, HeuristicTriager(), v1)
+    review.confirm(session, user, _rows(session)[0].id)
+    process_user(session, user, HeuristicTriager(), v2)
+    assert [(r.review, r.extraction_method) for r in _rows(session)] == [("confirmed", "v1")]
+
+
+def test_a_surviving_fact_is_not_mistaken_for_its_dismissed_sibling(
+    session: Session, user: User
+) -> None:
+    body = "I'll send the report and book the venue."
+    _one_mail(session, user, body)
+    both = Versioned(
+        "v1",
+        lambda r: [_commitment(r, body, "send the report"), _commitment(r, body, "book the venue")],
+    )
+    only_venue = Versioned("v2", lambda r: [_commitment(r, body, "book the venue")])
+    process_user(session, user, HeuristicTriager(), both)
+    report = next(r for r in _rows(session) if r.value == "send the report")
+    review.dismiss(session, user, report.id)
+    process_user(session, user, HeuristicTriager(), only_venue)
+    assert {(r.value, r.review) for r in _rows(session)} == {
+        ("send the report", "rejected"), ("book the venue", "unreviewed"),
+    }  # fmt: skip
+
+
+def test_dismissing_a_wrong_update_brings_the_original_back(session: Session, user: User) -> None:
+    from pwm.sources import Party, SourceKind, SourceRecord
+
+    bob = Party(name="Bob", address="bob@x.example")
+    mails = [
+        SourceRecord(id=f"m{n}", kind=SourceKind.EMAIL, observed_at=datetime(2026, 9, n, tzinfo=UTC),
+                     thread_id="t", sender=bob, recipients=(Party(name=user.name, address=user.email),),
+                     subject="quote", body=body)
+        for n, body in ((1, "Our quote is $500 for the job."), (2, "Sorry, the total is $5,000 for the job."))
+    ]  # fmt: skip
+    ingest(session, user, mails)
+    process_user(session, user, HeuristicTriager(), HeuristicExtractor())
+    original = session.scalars(select(Assertion).where(Assertion.value == "500")).one()
+    update = session.scalars(select(Assertion).where(Assertion.value == "5000")).one()
+    assert original.superseded_by_id == update.id
+
+    review.dismiss(session, user, update.id)
+    process_user(session, user, HeuristicTriager(), HeuristicExtractor())
+    session.refresh(original)
+    assert original.superseded_by_id is None
+
+
+def test_forgetting_a_note_also_removes_it_from_stored_briefs(
+    session: Session, user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PWM_FIXED_NOW", "2026-09-12T09:00:00+00:00")
+    from pwm.brief import service
+    from pwm.brief.writer import TemplateBriefWriter
+    from pwm.db.models import Brief
+
+    stages = (HeuristicTriager(), HeuristicExtractor())
+    memory = review.remember(
+        session, user, "My zebrafish licence ZX1234567: renew it by September 18.", *stages
+    )
+    derived = session.scalars(select(Assertion).where(Assertion.kind == "commitment")).one()
+    review.confirm(session, user, derived.id)
+    brief = service.generate(
+        session, user, TemplateBriefWriter(), service.InboxNotifier(), "weekly"
+    )
+    assert "ZX1234567" in str(brief.items)
+
+    review.forget(session, user, memory.id, *stages)
+    assert all("ZX1234567" not in str(b.items) for b in session.scalars(select(Brief)))
+
+
+def test_notes_are_the_users_words_whatever_characters_they_start_with(
+    session: Session, user: User
+) -> None:
+    stages = (HeuristicTriager(), HeuristicExtractor())
+    for text in ("> quoted line\nmy note about it", "<span hidden>secret</span> plan", "x" * 1800):
+        memory = review.remember(session, user, text, *stages)
+        assert memory.value == text and memory.review == "confirmed"

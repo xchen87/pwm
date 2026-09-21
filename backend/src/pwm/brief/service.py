@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from typing import Protocol
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from pwm import clock
@@ -53,7 +53,16 @@ def generate(
     )  # fmt: skip
     session.add(brief)
     session.flush()
-    if written:  # an empty brief is not worth a notification
+    unread = session.scalar(
+        select(func.count()).where(
+            Notification.user_id == user.id,
+            Notification.title == BRIEF_READY_TITLE,
+            Notification.read_at.is_(None),
+        )
+    )
+    # An empty brief is not worth a notification, and neither is a second "ready" while the
+    # first is still unread.
+    if written and not unread:
         notifier.notify(session, user, BRIEF_READY_TITLE, f"pwm://brief/{brief.id}")
     return brief
 

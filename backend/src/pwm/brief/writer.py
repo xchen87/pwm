@@ -1,5 +1,6 @@
 """Wording a brief. The writer words items; it never chooses or changes them."""
 
+import math
 from datetime import date, datetime
 from typing import Protocol
 
@@ -47,9 +48,12 @@ def readable(predicate: str, value: str | None) -> str:
     if predicate in MONEY:
         try:
             amount = float(value)
-        except ValueError:
+            if not math.isfinite(amount):
+                return value
+            whole = amount == int(amount)
+        except (ValueError, OverflowError):
             return value
-        return f"${amount:,.2f}" if amount != int(amount) else f"${int(amount):,}"
+        return f"${int(amount):,}" if whole else f"${amount:,.2f}"
     try:
         if "T" in value:
             moment = datetime.fromisoformat(value)

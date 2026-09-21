@@ -19,6 +19,7 @@ export default function WorldBrief() {
   const [missing, setMissing] = useState(false);
   const [rated, setRated] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const show = (loaded: BriefView) => {
     setBrief(loaded);
@@ -29,14 +30,21 @@ export default function WorldBrief() {
 
   useFocusEffect(
     useCallback(() => {
-      getLatestBrief().then(show, () => setMissing(true));
+      getLatestBrief().then(show, (problem: Error) => {
+        // "No brief yet" is an answer; a network failure is not the same thing.
+        if (/no brief yet/i.test(problem.message)) setMissing(true);
+        else setError('Can’t reach your world right now.');
+      });
     }, []),
   );
 
   const create = async () => {
     setBusy(true);
+    setError(null);
     try {
       show(await generateBrief());
+    } catch {
+      setError('Couldn’t make a brief just now. Try again.');
     } finally {
       setBusy(false);
     }
@@ -67,6 +75,7 @@ export default function WorldBrief() {
         </>
       )}
       {missing && <Text style={styles.empty}>No brief yet.</Text>}
+      {error && <Text style={styles.error}>{error}</Text>}
       <Button label={brief ? 'Make a fresh brief' : 'Make my first brief'} onPress={create} disabled={busy} />
     </ScrollView>
   );
@@ -76,4 +85,5 @@ const styles = StyleSheet.create({
   content: { padding: space.lg, paddingBottom: 64, maxWidth: 640, width: '100%', alignSelf: 'center' },
   date: { fontSize: 14, color: color.muted, marginBottom: space.md },
   empty: { fontSize: 16, color: color.muted, marginBottom: space.lg },
+  error: { fontSize: 14, color: color.warn, marginBottom: space.lg },
 });

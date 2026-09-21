@@ -132,3 +132,44 @@ def test_possessives_and_curly_apostrophes_do_not_become_search_terms() -> None:
 
     assert words("What is Dana’s new phone number?") == words("What is Dana's new phone number?")
     assert "s" not in words("What is Dana’s number?") and "dana" in words("Dana’s")
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Can you show me my deadlines?",
+        "What am I owed?",
+        "Who owes me something?",
+        "What do I need to do today?",
+        "whats due this week",
+        "What's Priya's new phone number?",
+        "What time is my dentist appointment?",
+        "When is my dentist apointment?",
+    ],
+)
+def test_ordinary_phrasing_and_typos_are_not_refused_as_unknown(
+    client: TestClient, question: str
+) -> None:
+    answer = client.post("/ask", json={"question": question}).json()
+    assert "haven’t seen anything about" not in answer["text"], answer["text"]
+
+
+def test_a_refusal_names_the_word_as_the_user_wrote_it(client: TestClient) -> None:
+    answer = client.post("/ask", json={"question": "When does my boat insurance renew?"}).json()
+    assert not answer["grounded"] and "“boat”" in answer["text"]
+
+
+def test_a_replaced_fact_is_marked_as_history_even_if_it_was_confirmed() -> None:
+    old = fact(
+        "old", is_fact=True, superseded=True, value="send Tom the numbers", due=date(2026, 9, 11)
+    )
+    new = fact("new", value="send Tom the numbers", due=date(2026, 9, 16))
+    answer = TemplateReasoner().answer(
+        "q", retrieve("What was the numbers deadline?", [old, new], TODAY)
+    )
+    first = next(line for line in answer.text.splitlines() if "Sep 11" in line)
+    assert first.startswith("• Earlier:") and first.endswith("later replaced")
+
+
+def test_before_a_day_is_about_the_future_not_history() -> None:
+    assert detect_intent("What do I have to do before Friday?") is not Intent.HISTORY

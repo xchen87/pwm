@@ -5,6 +5,7 @@ full-text search and pgvector take over behind the same function when a mailbox
 outgrows this (decisions D37).
 """
 
+import difflib
 import re
 from collections.abc import Sequence
 from datetime import date, timedelta
@@ -18,7 +19,9 @@ _STOPWORDS = frozenset(
     "a an and are as at be been by did do does for from had has have how i if in is it its me my "
     "of on or our so that the their them then there these they this to up was we were what when "
     "where which who whom why will with you your about again now still any all much many going "
-    "supposed am im ive say said tell know".split()
+    "supposed am im ive say said tell know can could would please show give list find get got "
+    "need needs want something anything someone anyone whats whos whens hows theres here "
+    "today tonight tomorrow upcoming soon currently right just also really".split()
 )
 MAX_RESULTS = 6
 MIN_SCORE = 1.0
@@ -64,7 +67,8 @@ _GENERIC = frozenset(
     for w in (
         "promise promised owe owes commit committed commitment commitments deadline deadlines due "
         "decide decided decision chose choose reason original originally number coming come week "
-        "next much going agree agreed pay send new now current currently happen happening"
+        "next much going agree agreed pay send new now current currently happen happening time day "
+        "date owed thing things stuff"
     ).split()
 )
 
@@ -73,9 +77,16 @@ def detect_intent(question: str) -> Intent:
     q = question.lower()
     if re.search(r"\bwhy\b|\bdecide|\bdecision|\bchose\b|\bchoose\b|\breason", q):
         return Intent.DECISION
-    if re.search(r"\b(originally|used to|before|previously|at first|was the)\b", q):
+    # Only explicit talk of the past. A bare "before" ("before Friday") is about the future.
+    if re.search(
+        r"\b(originally|used to|previously|at first|before it changed|what was|what were)\b", q
+    ):
         return Intent.HISTORY
-    if re.search(r"\bdeadlines?\b|\bdue\b|\bcoming up\b|\bthis week\b|\bnext week\b", q):
+    if re.search(
+        r"\bdeadlines?\b|\bdue\b|\bcoming up\b|\bthis week\b|\bnext week\b|\bto-?do\b|"
+        r"\b(need|have) to do\b",
+        q,
+    ):
         return Intent.DEADLINES
     if re.search(
         r"\b(did|do|have) i (promise|owe|commit|agree|say)|\bi (promised|owe)\b|\bmy commitments\b",
@@ -83,7 +94,7 @@ def detect_intent(question: str) -> Intent:
     ):
         return Intent.MY_COMMITMENTS
     if re.search(
-        r"\b(owes? me|promised? me|supposed to|waiting (on|for)|send me|get back to me)\b", q
+        r"\b(owes? me|owed\b|promised? me|supposed to|waiting (on|for)|send me|get back to me)", q
     ):
         return Intent.OWED_TO_ME
     if re.search(r"^\s*when\b|\bwhat time\b|\bwhat day\b", q):
@@ -124,9 +135,21 @@ def _matches_intent(fact: Fact, intent: Intent) -> bool:
 
 def retrieve(question: str, facts: Sequence[Fact], today: date) -> Retrieved:
     intent = detect_intent(question)
-    terms = [s for s in (_stem(w) for w in words(question)) if s not in _GENERIC]
     everything = {t for f in facts for t in _searchable(f)}
-    unknown = [t for t in terms if t not in everything]
+    terms: list[str] = []
+    unknown: list[str] = []
+    for word in words(question):
+        stem = _stem(word)
+        if stem in _GENERIC:
+            continue
+        if stem not in everything:
+            # A slip of the keyboard should not read as "never heard of it".
+            close = difflib.get_close_matches(stem, everything, n=1, cutoff=0.84)
+            if not close:
+                unknown.append(word)
+                continue
+            stem = close[0]
+        terms.append(stem)
     if unknown:
         # The question is about someone or something that appears nowhere. Answering from
         # the words that do match ("insurance", for a boat that does not exist) would be a

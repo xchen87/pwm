@@ -17,3 +17,16 @@ def test_improvements_and_new_scores_pass() -> None:
 
 def test_a_vanished_score_is_a_regression() -> None:
     assert regressions({}, {"injection_clean": 1.0})
+
+
+def test_a_missing_baseline_fails_the_gate(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import sys
+
+    import pytest
+
+    from pwm_eval import check
+
+    monkeypatch.setattr(check, "BASELINE", tmp_path / "missing.json")
+    monkeypatch.setattr(sys, "argv", ["check"])
+    with pytest.raises(SystemExit, match="missing baseline"):
+        check.main()

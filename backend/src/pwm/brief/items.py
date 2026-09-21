@@ -10,7 +10,7 @@ from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import ColumnElement, and_, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from pwm.db.models import Assertion, AssertionRelation, User
@@ -25,6 +25,7 @@ CONSUMER_PREDICATES = {
     "expires",
 }
 MAX_ITEMS = 12
+STALE_NEWS = timedelta(days=30)
 # A brief is not a to-do list: a few guesses to review, never a wall of them.
 MAX_PER_KIND = {"possible_commitment": 4}
 
@@ -40,8 +41,9 @@ class ItemKind(StrEnum):
 
 # Lower sorts first. Mirrors the order in prompts/world_brief.md.
 PRIORITY = {
-    ItemKind.DUE_SOON: 0,
-    ItemKind.CONFLICT: 1,
+    # A dispute outranks the date it disputes: 'due Friday' must not hide 'or is it Wednesday?'
+    ItemKind.CONFLICT: 0,
+    ItemKind.DUE_SOON: 1,
     ItemKind.CHANGED: 2,
     ItemKind.POSSIBLE_COMMITMENT: 3,
     ItemKind.CONSUMER: 4,
@@ -132,7 +134,15 @@ def select_items(session: Session, user: User, since: datetime, now: datetime) -
         select(AssertionRelation.type, newer, older)
         .join(newer, AssertionRelation.from_id == newer.id)
         .join(older, AssertionRelation.to_id == older.id)
-        .where(AssertionRelation.user_id == user.id, newer.observed_at >= since)
+        .where(
+            AssertionRelation.user_id == user.id,
+            # News is what the user has not been shown: judged by when it was learned, so
+            # mail that arrives late is not missed, but not reaching back past a month.
+            or_(
+                newer.observed_at >= since,
+                and_(newer.recorded_at >= since, newer.observed_at >= since - STALE_NEWS),
+            ),
+        )
     ).all()
     for relation_type, new, old in relations:
         if new.extraction_method == "user_correction" or new.review == "rejected":

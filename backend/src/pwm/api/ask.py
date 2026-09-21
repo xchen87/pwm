@@ -111,8 +111,10 @@ def remember(body: NewMemory, session: DbSession, user: CurrentUser) -> Commitme
     (a date, a person) still arrives as a possibility."""
     try:
         memory = review.remember(session, user, body.text, *build_stages())
-    except ValueError as problem:
-        raise HTTPException(422, str(problem)) from None
+    except ValueError:
+        # Never echo the reason: validation errors quote their input.
+        session.rollback()
+        raise HTTPException(422, "that note could not be stored") from None
     session.commit()
     return item_for(memory, set())
 

@@ -4,10 +4,10 @@ Persistence and scheduling live elsewhere so the eval harness can run exactly th
 code that production runs.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from pwm.extraction.candidates import Candidate, CandidateKind, Origin
 from pwm.extraction.interface import ExtractionRequest, Extractor, ModelUsage, Triager
@@ -18,6 +18,8 @@ from pwm.pipeline.text import looks_like_injection, visible_text
 from pwm.pipeline.world import DraftAssertion, DraftRelation, assign_confidence, reconcile
 from pwm.sources import Party, SourceKind, SourceRecord
 
+SUBJECT_LIMIT, VALUE_LIMIT, QUOTE_LIMIT = 300, 2000, 1000
+
 
 class SourceOutcome(BaseModel):
     source_id: str
@@ -27,6 +29,8 @@ class SourceOutcome(BaseModel):
     suspicious: bool = False
     dropped_unverified: int = 0
     dropped_forbidden_origin: int = 0
+    # The name of the error if this one source could not be processed. Never its text.
+    failed: str | None = None
     usage: tuple[ModelUsage, ...] = ()
 
 
@@ -38,15 +42,16 @@ class PipelineResult(BaseModel):
 
 
 def calendar_candidate(source: SourceRecord) -> Candidate | None:
-    if source.starts_at is None or not source.subject:
+    if source.starts_at is None or not source.subject.strip():
         return None
+    title = source.subject.strip()[:SUBJECT_LIMIT]
     return Candidate(
         source_id=source.id,
         kind=CandidateKind.EVENT,
-        subject=source.subject,
+        subject=title,
         predicate="date",
         value=source.starts_at.strftime("%Y-%m-%dT%H:%M"),
-        evidence_quote=source.subject,
+        evidence_quote=title,
         origin=Origin.SOURCE_EXPLICIT,
     )
 
@@ -58,8 +63,9 @@ def memory_candidate(source: SourceRecord) -> Candidate:
         kind=CandidateKind.MEMORY,
         subject="Note",
         predicate="note",
-        value=text,
-        evidence_quote=text,
+        value=text[:VALUE_LIMIT],
+        # Evidence is a passage, so a long note is evidenced by its opening.
+        evidence_quote=text[:QUOTE_LIMIT],
         origin=Origin.USER_STATED,
     )
 
@@ -78,10 +84,17 @@ def acceptable(
     return True
 
 
-def canonical_addresses(people: Sequence[ResolvedIdentity]) -> dict[str, str]:
-    """Every address of a person maps to one key, so a reply from someone's second address
-    still counts as coming from them."""
-    return {address: person.addresses[0] for person in people for address in person.addresses}
+def canonical_addresses(
+    people: Sequence[ResolvedIdentity], confirmed_aliases: Mapping[str, str] | None = None
+) -> dict[str, str]:
+    """Which addresses may speak for the same person when deciding who can update a fact.
+
+    Only links the user made by hand count. An *inferred* link (a compatible display name
+    plus a self-identifying signature) is good enough to suggest "this might be Priya's
+    other address", but anyone can write that signature, so it never lets a new address
+    replace what the known one said.
+    """
+    return dict(confirmed_aliases or {})
 
 
 def provenance(source: SourceRecord, user: Party, canonical: dict[str, str]) -> dict[str, Any]:
@@ -95,27 +108,34 @@ def provenance(source: SourceRecord, user: Party, canonical: dict[str, str]) -> 
         "thread_id": source.thread_id,
         "sender_address": key(sender) if sender else None,
         "participants": frozenset(key(p) for p in everyone),
-        "from_user": is_from_user(source, user) or source.kind is SourceKind.USER_CAPTURE,
+        # The user's own mail and notes. Not calendar entries: the connector files every event
+        # under the calendar's owner, including invitations other people sent.
+        "from_user": source.kind is SourceKind.USER_CAPTURE
+        or (source.kind is SourceKind.EMAIL and is_from_user(source, user)),
     }
 
 
 def run_pipeline(
-    sources: Sequence[SourceRecord], user: Party, triager: Triager, extractor: Extractor
+    sources: Sequence[SourceRecord],
+    user: Party,
+    triager: Triager,
+    extractor: Extractor,
+    confirmed_aliases: Mapping[str, str] | None = None,
 ) -> PipelineResult:
     ordered = sorted(sources, key=lambda s: (s.observed_at, s.id))
     people = resolve_people(ordered, user)
-    canonical = canonical_addresses(people)
-    # Someone the user has written to, or shares a calendar event with, as of each message.
-    # Merely having emailed the user does not make a sender known.
+    canonical = canonical_addresses(people, confirmed_aliases)
+    # Someone the user has written to, as of each message. Merely having emailed the user
+    # does not make a sender known.
     known_addresses: set[str] = set()
     thread_history: dict[str, list[str]] = {}
     outcomes: list[SourceOutcome] = []
     drafts: list[DraftAssertion] = []
 
     for source in ordered:
-        if source.kind is SourceKind.CALENDAR_EVENT or (
-            source.kind is SourceKind.EMAIL and is_from_user(source, user)
-        ):
+        # Writing to someone is the proof of a relationship. A calendar invite is not: anyone
+        # can send one, and it would promote its sender to "known".
+        if source.kind is SourceKind.EMAIL and is_from_user(source, user):
             known_addresses |= {p.address.lower() for p in source.recipients}
         decision = route(source, user)
         outcome = SourceOutcome(source_id=source.id, route=decision)
@@ -123,27 +143,33 @@ def run_pipeline(
         text = visible_text(source)
         candidates: tuple[Candidate, ...] = ()
 
-        if decision is Route.STRUCTURED:
-            event = calendar_candidate(source)
-            candidates = (event,) if event else ()
-        elif decision in (Route.TRIAGE, Route.EXTRACT):
-            request = ExtractionRequest(
-                source=source,
-                visible_text=text,
-                context=tuple(thread_history.get(source.thread_id or "", ())),
-                user=user,
-            )
-            outcome.reached_model = True
-            relevant = True
-            if decision is Route.TRIAGE:
-                triage = triager.is_relevant(request)
-                outcome.usage += triage.usage
-                relevant = outcome.relevant = triage.relevant
-            if relevant:
-                extraction = extractor.extract(request)
-                outcome.usage += extraction.usage
-                outcome.suspicious = extraction.suspicious_content
-                candidates = extraction.candidates
+        try:
+            if decision is Route.STRUCTURED:
+                event = calendar_candidate(source)
+                candidates = (event,) if event else ()
+            elif decision in (Route.TRIAGE, Route.EXTRACT):
+                request = ExtractionRequest(
+                    source=source,
+                    visible_text=text,
+                    context=tuple(thread_history.get(source.thread_id or "", ())),
+                    user=user,
+                )
+                outcome.reached_model = True
+                relevant = True
+                if decision is Route.TRIAGE:
+                    triage = triager.is_relevant(request)
+                    outcome.usage += triage.usage
+                    relevant = outcome.relevant = triage.relevant
+                if relevant:
+                    extraction = extractor.extract(request)
+                    outcome.usage += extraction.usage
+                    outcome.suspicious = extraction.suspicious_content
+                    candidates = extraction.candidates
+        except ValidationError:
+            # One malformed or hostile message must never stop the rest of the user's mail.
+            # (Provider failures are different: they propagate, and the job retries.)
+            outcome.failed = "ValidationError"
+            candidates = ()
         if source.kind is SourceKind.USER_CAPTURE and source.body.strip():
             # Whatever else is understood from it, what the user asked to remember is kept.
             candidates += (memory_candidate(source),)

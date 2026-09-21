@@ -46,6 +46,7 @@ _CLOCK = re.compile(r"\bat (\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", re.I)
 _TOPIC_PREFIX = re.compile(r"^\s*((re|fwd?)\s*:\s*)+", re.I)
 _STRUCTURED_DATA = re.compile(r"[{\[]\s*\"|\":\s")
 # A full stop after a title ("Dr. Amari") does not end a sentence.
+MAX_SENTENCE = 600
 _SENTENCE_END = re.compile(r"(?<!\bDr\.)(?<!\bMr\.)(?<!\bMs\.)(?<!\bMrs\.)(?<!\bSt\.)(?<=[.!?])\s+")
 
 
@@ -89,13 +90,15 @@ class HeuristicExtractor:
         source, user = request.source, request.user
         if source.sender is None:
             return ExtractionResult()
-        author = source.sender.name or source.sender.address
-        user_name = user.name or user.address
+        author = (source.sender.name or source.sender.address)[:200]
+        user_name = (user.name or user.address)[:200]
         by_user = is_from_user(source, user)
         from_capture = source.kind is SourceKind.USER_CAPTURE
         origin = Origin.USER_STATED if from_capture else Origin.SOURCE_EXPLICIT
         written_on = source.observed_at.date()
-        others = [p.name or p.address for p in source.recipients if p.address != user.address]
+        others = [
+            (p.name or p.address)[:200] for p in source.recipients if p.address != user.address
+        ]
         found: list[Candidate] = []
 
         def commitment(quote: str, kind: CommitmentType, by: str, to: str | None) -> None:
@@ -121,6 +124,8 @@ class HeuristicExtractor:
             )
 
         for sentence in sentences(request.visible_text):
+            if len(sentence) > MAX_SENTENCE:
+                continue  # evidence is a passage; a run-on this long is not one
             if _DECISION.search(sentence) and (by_user or from_capture or "we" in sentence.lower()):
                 found.append(
                     Candidate(
@@ -166,7 +171,7 @@ class HeuristicExtractor:
         a thread, which is what lets a later message supersede an earlier one."""
         source = request.source
         written_on = source.observed_at.date()
-        topic = _TOPIC_PREFIX.sub("", source.subject).strip() or "Note"
+        topic = (_TOPIC_PREFIX.sub("", source.subject).strip() or "Note")[:300]
         effective = dates.resolve(sentence, written_on) or dates.resolve(
             request.visible_text, written_on
         )

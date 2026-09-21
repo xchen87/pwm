@@ -190,7 +190,9 @@ def remember(
         select(Assertion)
         .join(Source, Assertion.source_id == Source.id)
         .where(Source.external_id == record.id, Assertion.kind == "memory")
-    ).one()
+    ).first()
+    if memory is None:
+        raise ValueError("that note could not be stored")
     memory.review = "confirmed"
     _log(session, user, memory, "remember")
     return memory

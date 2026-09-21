@@ -10,8 +10,15 @@ FIXTURE = load_fixture()
 GOLD = FIXTURE.gold
 
 
-def gold_drafts() -> list[DraftAssertion]:
-    canonical = canonical_addresses(resolve_people(FIXTURE.sources, GOLD.user))
+PRIYA = {
+    "priya.n@example.com": "priya.n@example.com",
+    "priya@natarajan-design.example": "priya.n@example.com",
+}
+
+
+def gold_drafts(confirmed_aliases: dict[str, str] | None = PRIYA) -> list[DraftAssertion]:
+    people = resolve_people(FIXTURE.sources, GOLD.user)
+    canonical = canonical_addresses(people, confirmed_aliases)
     drafts = []
     for assertion in GOLD.assertions:
         source = FIXTURE.source(assertion.source_id)
@@ -111,3 +118,13 @@ def test_the_original_sender_can_update_their_own_statement() -> None:
     bank = _draft("billing@bank.example", "t1", "2026-09-20", to=("alex@example.com",))
     later = _draft("billing@bank.example", "t2", "2026-10-30", to=("alex@example.com",))
     assert [r.type.value for r in reconcile([bank, later])] == ["supersedes"]
+
+
+def test_an_inferred_second_address_cannot_replace_what_the_first_one_said() -> None:
+    """Without the user confirming the link, "Priya N." at a new address only disputes."""
+    drafts = gold_drafts(confirmed_aliases=None)
+    ids = [a.id for a in GOLD.assertions]
+    found = {(r.type.value, ids[r.from_index], ids[r.to_index]) for r in reconcile(drafts)}
+    assert ("contradicts", "g_dinner_sun", "g_dinner_sat") in found
+    assert ("supersedes", "g_dinner_sun", "g_dinner_sat") not in found
+    assert drafts[ids.index("g_dinner_sat")].superseded_by is None
