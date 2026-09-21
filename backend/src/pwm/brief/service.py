@@ -80,3 +80,26 @@ def record_event(session: Session, user: User, name: str, subject_id: object = N
     session.add(
         ProductEvent(user_id=user.id, name=name, subject_id=subject_id, created_at=clock.now())
     )
+
+
+def generate_due(session: Session, writer: BriefWriter, notifier: Notifier) -> int:
+    """Generate a brief for every user whose last one of that period is older than the
+    period. Meant to be run on a schedule; running it more often changes nothing."""
+    now = clock.now()
+    made = 0
+    for user in session.scalars(select(User)):
+        for period, length in PERIODS.items():
+            last = session.scalar(
+                select(Brief.created_at)
+                .where(Brief.user_id == user.id, Brief.period == period)
+                .order_by(Brief.created_at.desc())
+                .limit(1)
+            )
+            if last is not None and now - last < length:
+                continue
+            brief = generate(session, user, writer, notifier, period)
+            if not brief.items:
+                session.delete(brief)  # nothing to say is not a brief
+                continue
+            made += 1
+    return made

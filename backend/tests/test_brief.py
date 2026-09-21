@@ -135,3 +135,20 @@ def test_dates_and_money_read_the_way_a_person_writes_them() -> None:
     assert readable("monthly_price", "18.99") == "$18.99"
     assert readable("phone", "555-0142") == "555-0142"
     assert readable("quote", "about twenty grand") == "about twenty grand"
+
+
+def test_scheduled_briefs_are_made_once_per_period(session: Session, world: User) -> None:
+    from pwm.db.models import Brief
+
+    writer, notifier = TemplateBriefWriter(), service.InboxNotifier()
+    assert service.generate_due(session, writer, notifier) == 2  # one daily, one weekly
+    assert service.generate_due(session, writer, notifier) == 0
+    periods = sorted(session.scalars(select(Brief.period)))
+    assert periods == ["daily", "weekly"]
+
+
+def test_a_user_with_nothing_to_report_gets_no_brief(session: Session, user: User) -> None:
+    from pwm.db.models import Brief
+
+    assert service.generate_due(session, TemplateBriefWriter(), service.InboxNotifier()) == 0
+    assert session.scalars(select(Brief)).all() == []

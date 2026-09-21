@@ -4,6 +4,7 @@ uv run python -m pwm.cli demo    # load the synthetic fixture for the local user
 uv run python -m pwm.cli work       # run any pending jobs
 uv run python -m pwm.cli reprocess  # run the funnel again over everything (idempotent)
 uv run python -m pwm.cli brief      # generate a weekly World Brief for the local user
+uv run python -m pwm.cli tick       # scheduled work: pending jobs, then any briefs that are due
 uv run python -m pwm.cli reset   # delete the local user and everything derived from them
 """
 
@@ -12,7 +13,7 @@ import argparse
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from pwm.brief.service import InboxNotifier, generate
+from pwm.brief.service import InboxNotifier, generate, generate_due
 from pwm.brief.writer import TemplateBriefWriter
 from pwm.config import get_settings
 from pwm.connectors.demo import DemoMailbox
@@ -27,7 +28,7 @@ from pwm.sources import Party
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["demo", "work", "reprocess", "brief", "reset"])
+    parser.add_argument("command", choices=["demo", "work", "reprocess", "brief", "tick", "reset"])
     command = parser.parse_args().command
     settings = get_settings()
 
@@ -52,6 +53,12 @@ def main() -> None:
             print(f"brief {brief.id}: {len(brief.items)} item(s)")
             return
         triager, extractor = build_stages()
+        if command == "tick":
+            jobs = run_all(session, triager, extractor)
+            briefs = generate_due(session, TemplateBriefWriter(), InboxNotifier())
+            session.commit()
+            print(f"ran {jobs} job(s), made {briefs} brief(s)")
+            return
         if command == "reprocess":
             for user in session.scalars(select(User)):
                 process_user(session, user, triager, extractor)

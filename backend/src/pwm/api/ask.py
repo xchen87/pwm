@@ -9,12 +9,11 @@ from pwm import clock, review
 from pwm.api.commitments import item_for
 from pwm.api.deps import CurrentUser, DbSession
 from pwm.api.schemas import CommitmentItem
-from pwm.ask.answer import TemplateReasoner
 from pwm.ask.facts import Fact
 from pwm.ask.retrieval import retrieve
 from pwm.brief.service import record_event
 from pwm.db.models import Assertion, AssertionRelation, User
-from pwm.extraction.factory import build_stages
+from pwm.extraction.factory import build_stages, build_writers
 
 router = APIRouter()
 
@@ -91,7 +90,7 @@ def facts_for(session: Session, user: User) -> list[Fact]:
 @router.post("/ask")
 def ask(body: Question, session: DbSession, user: CurrentUser) -> AnswerView:
     retrieved = retrieve(body.question, facts_for(session, user), clock.today())
-    answer = TemplateReasoner().answer(body.question, retrieved)
+    answer = build_writers()[1].answer(body.question, retrieved)
     record_event(session, user, "question_asked")
     session.commit()
     return AnswerView(

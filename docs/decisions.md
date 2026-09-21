@@ -162,3 +162,12 @@ Retrieval is plain code over one user's live assertions: intent detection (mine 
 
 ### D38. Remember / Forget are user actions
 `POST /memories` stores the note as a user-capture source, runs the funnel, and then — in `review.remember`, with an audit event — confirms the verbatim memory. Anything read out of the note stays a possibility. `DELETE /memories/{id}` deletes the capture source, which cascades to the memory and everything interpreted from it.
+
+### D39. Model-backed wording is checked by code, item by item
+`AnthropicBriefWriter` and `AnthropicReasoner` sit behind the same protocols as the template versions and are selected by `PWM_EXTRACTOR`. Code keeps its own selection and order and then checks the model's work: a brief item falls back to template wording if the model drops it, words an unconfirmed item as fact, or uses a number that is not in the item; extra items are ignored; an answer may cite only the evidence it was given, and an answer that cites nothing becomes a refusal without the model's text being shown. With no evidence, no call is made. Unit-tested against a stand-in client; **never run live**. The Home screen's "what changed" always uses the template writer: it must be instant and free.
+
+### D40. Briefs on a schedule
+`pwm.cli tick` runs pending jobs, then makes any daily or weekly brief that is due (none if there is nothing to say; never two within a period). It is meant for cron or a platform scheduler; a long-running scheduler process is unnecessary at this size.
+
+### D41. Connections own their data
+Every source records the connector that brought it in. Disconnecting deletes exactly those sources, rebuilds what is left (people only they mentioned disappear; notes the user typed stay), and removes the connection. "Delete everything" deletes the user row and relies on cascade, which a test verifies table by table. Gmail and Calendar payload normalization exists as pure functions (`connectors/google.py`, plain-text part only, `Authentication-Results` header kept for the sender-spoofing work in D32); the OAuth flow, fetching, encrypted token storage, and accounts are deliberately not written blind — they need a Google OAuth client to build against.

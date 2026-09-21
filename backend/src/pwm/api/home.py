@@ -13,6 +13,7 @@ from pwm.brief import service
 from pwm.brief.items import select_items
 from pwm.brief.writer import TemplateBriefWriter, WrittenItem
 from pwm.db.models import Assertion, Brief, Notification
+from pwm.extraction.factory import build_writers
 
 router = APIRouter()
 FIRST_VISIT_LOOKBACK = timedelta(days=14)
@@ -114,7 +115,7 @@ def _view(brief: Brief) -> BriefView:
 def generate_brief(session: DbSession, user: CurrentUser, period: str = "weekly") -> BriefView:
     if period not in service.PERIODS:
         raise HTTPException(422, "period must be daily or weekly")
-    brief = service.generate(session, user, TemplateBriefWriter(), service.InboxNotifier(), period)
+    brief = service.generate(session, user, build_writers()[0], service.InboxNotifier(), period)
     session.commit()
     return _view(brief)
 

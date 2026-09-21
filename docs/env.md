@@ -6,7 +6,7 @@ Backend variables use the `PWM_` prefix and may be placed in a `.env` file at th
 |---|---|---|
 | `PWM_DATABASE_URL` | `postgresql+psycopg://pwm:pwm@localhost:5433/pwm` | SQLAlchemy URL. The default matches `docker-compose.yml`. |
 | `PWM_ENVIRONMENT` | `local` | `local`, `staging`, or `production`. |
-| `PWM_EXTRACTOR` | `heuristic` | `heuristic` (rule-based, no credentials, nothing leaves the machine) or `anthropic` (sends source text to the provider). |
+| `PWM_EXTRACTOR` | `heuristic` | `heuristic` (rule-based extraction, template briefs and answers; no credentials, nothing leaves the machine) or `anthropic` (model-backed extraction, briefs and answers; sends source text to the provider). |
 | `PWM_TRIAGE_MODEL` | `claude-haiku-4-5` | Model for the triage stage when `PWM_EXTRACTOR=anthropic`. |
 | `PWM_EXTRACTION_MODEL` | `claude-opus-5` | Model for the extraction stage. |
 | `PWM_DEV_USER_EMAIL` / `PWM_DEV_USER_NAME` | `alex.rivera@example.com` / `Alex Rivera` | The single local user the API serves until Slice 4 adds authentication. Matches the synthetic fixture. |
