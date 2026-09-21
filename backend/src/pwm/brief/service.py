@@ -69,7 +69,10 @@ def generate(
 
 def latest(session: Session, user: User) -> Brief | None:
     return session.scalar(
-        select(Brief).where(Brief.user_id == user.id).order_by(Brief.created_at.desc()).limit(1)
+        select(Brief)
+        .where(Brief.user_id == user.id)
+        .order_by(Brief.created_at.desc(), Brief.period.desc())
+        .limit(1)
     )
 
 
@@ -106,7 +109,11 @@ def generate_due(session: Session, writer: BriefWriter, notifier: Notifier) -> i
             )
             if last is not None and now - last < length:
                 continue
-            brief = generate(session, user, writer, notifier, period)
+            try:
+                with session.begin_nested():
+                    brief = generate(session, user, writer, notifier, period)
+            except Exception:  # noqa: BLE001 - one user's failure must not stop everyone's briefs
+                continue
             if not brief.items:
                 session.delete(brief)  # nothing to say is not a brief
                 continue

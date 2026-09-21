@@ -28,10 +28,8 @@ ENV = {
     "PWM_DATABASE_URL": DB_URL,
     "PWM_EXTRACTOR": "heuristic",
     "PWM_FIXED_NOW": "2026-09-12T09:00:00+00:00",
-    "PWM_CORS_ORIGINS": '["http://127.0.0.1:18081"]',
 }
 CHECKS: list[str] = []
-STATIC_PORT = 18081
 
 
 def run(*command: str) -> str:
@@ -109,31 +107,37 @@ def rendered(chrome: str, url: str) -> str:
     return done.stdout
 
 
-def app_in_a_browser(api: Api) -> None:
+def app_in_a_browser(api: Api, static_port: int) -> None:
     """Build the real web app against this server and look at what a person would see.
 
     `--clear` matters: Metro caches transformed files with EXPO_PUBLIC_* values inlined, so
     without it the bundle would still point at whatever API URL an earlier build used.
     """
-    chrome = browser()
-    if chrome is None:
-        print("functional: no Chrome/Chromium found, skipping the in-browser checks")
-        return
     build = subprocess.run(
-        ["npx", "expo", "export", "--platform", "web", "--clear"], cwd=ROOT / "app", capture_output=True,
-        text=True, check=False, env={**os.environ, "CI": "1", "EXPO_PUBLIC_API_URL": api.base},
+        ["npx", "expo", "export", "--platform", "web", "--clear"], cwd=ROOT / "app",
+        capture_output=True, text=True, check=False,
+        env={**os.environ, "CI": "1", "EXPO_PUBLIC_API_URL": api.base},
     )  # fmt: skip
     check(
         build.returncode == 0 and (ROOT / "app/dist/index.html").exists(),
         "the production web build succeeds",
     )
+    chrome = browser()
+    if chrome is None:
+        if os.environ.get("PWM_REQUIRE_BROWSER"):
+            sys.exit(
+                "FUNCTIONAL TEST FAILED: PWM_REQUIRE_BROWSER is set and no Chrome/Chromium was found"
+            )
+        print("functional: WARNING no Chrome/Chromium found; in-browser checks were NOT run")
+        return
     static = subprocess.Popen(
-        [sys.executable, "-m", "http.server", str(STATIC_PORT), "--bind", "127.0.0.1"],
+        [sys.executable, "-m", "http.server", str(static_port), "--bind", "127.0.0.1"],
         cwd=ROOT / "app/dist", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )  # fmt: skip
     try:
         time.sleep(1)
-        page = f"http://127.0.0.1:{STATIC_PORT}/"
+        check(static.poll() is None, "the static server for the built app is running")
+        page = f"http://127.0.0.1:{static_port}/"
         api.call("DELETE", "/me")
         check(
             "Connect your life" in rendered(chrome, page),
@@ -160,10 +164,11 @@ def main() -> None:
     second = run("uv", "run", "python", "-m", "pwm.cli", "demo")
     check("ingested 0 new sources" in second, "loading the same mailbox again ingests nothing")
 
-    port = free_port()
+    port, static_port = free_port(), free_port()
+    server_env = {**ENV, "PWM_CORS_ORIGINS": f'["http://127.0.0.1:{static_port}"]'}
     server = subprocess.Popen(
         ["uv", "run", "uvicorn", "pwm.api.main:app", "--port", str(port), "--log-level", "warning"],
-        cwd=ROOT, env=ENV,
+        cwd=ROOT, env=server_env,
     )  # fmt: skip
     try:
         api = Api(f"http://127.0.0.1:{port}")
@@ -176,7 +181,7 @@ def main() -> None:
         else:
             sys.exit("server did not start")
         journeys(api)
-        app_in_a_browser(api)
+        app_in_a_browser(api, static_port)
     finally:
         server.terminate()
         server.wait(timeout=10)

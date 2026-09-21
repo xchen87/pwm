@@ -7,12 +7,14 @@ from pwm.sources import SourceKind, SourceRecord
 _REPLY_HEADER = re.compile(r"^On .{5,200} wrote:\s*$")
 _FORWARD_MARKER = re.compile(r"^-{2,}\s*(Original|Forwarded) [Mm]essage\s*-{2,}")
 # Text a recipient would never see is a classic carrier for injected instructions.
-_OPEN_TAG = re.compile(r"<([a-zA-Z][\w-]*)\b([^>]*)>")
+# A tag cannot contain another "<", and its attributes are bounded: both keep scanning
+# linear on hostile input such as a megabyte of unclosed "<a<a<a".
+_OPEN_TAG = re.compile(r"<([a-zA-Z][\w-]{0,40})\b([^<>]{0,2000})>")
 _HIDING_STYLE = re.compile(
-    r"display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(\.0+)?\s*(;|$|[\"'])|"
-    r"font-size\s*:\s*[0-2](\.\d+)?\s*(px|pt|em|%)?\s*(;|$|[\"'])|"
-    r"(max-)?(height|width)\s*:\s*0\s*(px)?\s*(;|$|[\"'])|"
-    r"(?<![-\w])color\s*:\s*(#fff(fff)?\b|white\b|transparent\b|rgba\([^)]*,\s*0\s*\))",
+    r"display\s{0,8}:\s{0,8}none|visibility\s{0,8}:\s{0,8}hidden|opacity\s{0,8}:\s{0,8}0(\.0{1,8})?\s{0,8}(;|$|[\"'])|"
+    r"font-size\s{0,8}:\s{0,8}[0-2](\.\d{1,8})?\s{0,8}(px|pt|em|%)?\s{0,8}(;|$|[\"'])|"
+    r"(max-)?(height|width)\s{0,8}:\s{0,8}0\s{0,8}(px)?\s{0,8}(;|$|[\"'])|"
+    r"(?<![-\w])color\s{0,8}:\s{0,8}(#fff(fff)?\b|white\b|transparent\b|rgba\([^()]{0,40},\s{0,8}0\s{0,8}\))",
     re.IGNORECASE,
 )
 _HIDDEN_ATTRIBUTE = re.compile(
@@ -32,7 +34,7 @@ def _hides(attributes: str) -> bool:
 def _end_of_element(body: str, name: str, start: int) -> int:
     """Index just past the tag that closes the element opened before `start`, counting
     nested elements of the same name. An unclosed element hides everything after it."""
-    tag = re.compile(rf"<(/?){re.escape(name)}\b[^>]*>", re.IGNORECASE)
+    tag = re.compile(rf"<(/?){re.escape(name)}\b[^<>]{{0,2000}}>", re.IGNORECASE)
     depth, position = 1, start
     while found := tag.search(body, position):
         depth += -1 if found[1] else 1

@@ -24,6 +24,7 @@ export default function WorldBrief() {
   const show = (loaded: BriefView) => {
     setBrief(loaded);
     setMissing(false);
+    setError(null);
     void recordEvent('brief_opened', loaded.id);
     void markNotificationsRead().catch(() => undefined);
   };
@@ -32,8 +33,10 @@ export default function WorldBrief() {
     useCallback(() => {
       getLatestBrief().then(show, (problem: Error) => {
         // "No brief yet" is an answer; a network failure is not the same thing.
-        if (/no brief yet/i.test(problem.message)) setMissing(true);
-        else setError('Can’t reach your world right now.');
+        if (/no brief yet/i.test(problem.message)) {
+          setBrief(null); // it may have been removed since this screen last showed it
+          setMissing(true);
+        } else setError('Can’t reach your world right now.');
       });
     }, []),
   );

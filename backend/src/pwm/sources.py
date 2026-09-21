@@ -7,7 +7,7 @@ immutable, and its text is untrusted third-party content: data, never instructio
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class SourceKind(StrEnum):
@@ -16,11 +16,24 @@ class SourceKind(StrEnum):
     USER_CAPTURE = "user_capture"
 
 
+MAX_BODY = 200_000
+
+
+def _clean(text: str) -> str:
+    # PostgreSQL text cannot hold NUL, and nothing a person wrote contains one.
+    return text.replace("\x00", "")
+
+
 class Party(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: str | None = None
     address: str
+
+    @field_validator("name", "address", mode="before")
+    @classmethod
+    def _no_nul(cls, value: object) -> object:
+        return _clean(value) if isinstance(value, str) else value
 
 
 class SourceRecord(BaseModel):
@@ -41,6 +54,12 @@ class SourceRecord(BaseModel):
     ends_at: datetime | None = None
     location: str | None = None
     event_status: str | None = None
+
+    @field_validator("subject", "body", "location", mode="before")
+    @classmethod
+    def _sanitize(cls, value: object) -> object:
+        # Bounded as well: a megabyte of markup is an attack on the parser, not a letter.
+        return _clean(value)[:MAX_BODY] if isinstance(value, str) else value
 
     @property
     def text(self) -> str:

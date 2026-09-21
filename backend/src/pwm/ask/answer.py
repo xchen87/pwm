@@ -69,12 +69,16 @@ class TemplateReasoner:
             return Answer(text=text, grounded=False, cited=[])
         lines = "\n".join(f"• {_line(f)}" for f in retrieved.facts)
         unconfirmed = [f for f in retrieved.facts if not f.is_fact]
-        caveat = None
+        notes = []
+        if retrieved.corrections:
+            typed, read_as = retrieved.corrections[0]
+            notes.append(f"I read “{typed}” as “{read_as}”.")
         if unconfirmed:
-            caveat = (
+            notes.append(
                 "Some of this comes from messages and hasn’t been confirmed by you. "
                 "Open an item to see its source."
             )
+        caveat = " ".join(notes) or None
         return Answer(
             text=f"{self.LEADS[retrieved.intent]}\n{lines}",
             grounded=True,

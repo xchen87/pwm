@@ -69,7 +69,7 @@ def _moment(sentence: str, written_on: date) -> str | None:
     day = dates.resolve(sentence, written_on)
     if day is None:
         return None
-    if clock := _CLOCK.search(sentence):
+    if (clock := _CLOCK.search(sentence)) and 1 <= int(clock[1]) <= 12 and int(clock[2] or 0) < 60:
         hour = int(clock[1]) % 12 + (12 if clock[3].lower() == "pm" else 0)
         return f"{day.isoformat()}T{hour:02d}:{int(clock[2] or 0):02d}"
     return day.isoformat()

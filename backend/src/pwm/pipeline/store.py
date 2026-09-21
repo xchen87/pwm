@@ -21,6 +21,7 @@ from pwm.db.models import (
     Brief,
     Job,
     ModelCall,
+    Notification,
     Person,
     PersonIdentifier,
     Source,
@@ -38,7 +39,7 @@ from pwm.extraction.interface import (
 from pwm.extraction.quotes import normalize
 from pwm.pipeline.core import PipelineResult, run_pipeline
 from pwm.pipeline.text import similarity
-from pwm.pipeline.world import DraftAssertion
+from pwm.pipeline.world import DraftAssertion, reconcile
 from pwm.sources import Party, SourceRecord
 
 # A dismissed or corrected item must not come back because a new model phrased its quote
@@ -246,7 +247,11 @@ def _pair_up(
     mistaken for a sibling the user dismissed.
     """
     if len(drafts) == 1 and len(siblings) == 1:
-        return {drafts[0][0]: siblings[0]}
+        (index, draft), row = drafts[0], siblings[0]
+        # Same sentence, same kind of fact: the same fact, however two extractors word it.
+        # A different predicate is a different fact that happens to share the sentence.
+        if row.review == "unreviewed" or row.predicate == draft.candidate.predicate:
+            return {index: row}
     scored = sorted(
         (
             (similarity(d.candidate.value, row.value), index, row)
@@ -284,32 +289,53 @@ def _write_assertions(
         grouped.setdefault(key, []).append((index, draft))
 
     rows: list[Assertion | None] = [None] * len(result.assertions)
-    settled: set[int] = set()
     created = 0
+
+    # First, exact identity: same source, kind and quote. Done for every group before any
+    # fuzzier matching, so a row that has an exact partner is never taken by a lookalike.
+    pairs: dict[int, Assertion] = {}
+    for key, drafts in grouped.items():
+        pairs.update(_pair_up(drafts, by_identity.get(key, [])))
+    claimed = {row.id for row in pairs.values()}
+
+    def same_fact(row: Assertion, draft: DraftAssertion, source_id: UUID, kind: str) -> bool:
+        return (
+            row.source_id == source_id
+            and row.kind == kind
+            and similarity(row.evidence_quote, draft.candidate.evidence_quote) >= SAME_EVIDENCE
+            and similarity(row.value, draft.candidate.value) >= SAME_EVIDENCE
+        )
+
     for key, drafts in grouped.items():
         source_id, kind, hashed = key
-        siblings = by_identity.get(key, [])
-        paired = _pair_up(drafts, siblings)
-        next_ordinal = max((a.ordinal for a in siblings), default=-1) + 1
+        next_ordinal = max((a.ordinal for a in by_identity.get(key, [])), default=-1) + 1
         for index, draft in drafts:
-            row = paired.get(index)
-            quote = draft.candidate.evidence_quote
+            row = pairs.get(index)
             if row is None:
-                # The user may already have ruled on this under a slightly different quote
-                # (a new model trims a full stop). Their ruling stands; no fresh copy appears.
-                earlier = next(
+                # A new model may trim a full stop or re-punctuate. If the user already
+                # ruled on this fact, their ruling stands and no fresh copy appears.
+                ruled = next((r for r in reviewed if same_fact(r, draft, source_id, kind)), None)
+                if ruled is not None:
+                    rows[index] = ruled if ruled.review == "confirmed" else None
+                    continue
+                # If nobody has looked at it yet, keep the row (and whatever points at it,
+                # such as a stored brief) and take the new wording.
+                row = next(
                     (
-                        r for r in reviewed
-                        if r.source_id == source_id and r.kind == kind
-                        and similarity(r.evidence_quote, quote) >= SAME_EVIDENCE
-                        and similarity(r.value, draft.candidate.value) >= SAME_EVIDENCE
+                        r
+                        for r in existing
+                        if r.review == "unreviewed"
+                        and r.id not in claimed
+                        and same_fact(r, draft, source_id, kind)
                     ),
                     None,
-                )  # fmt: skip
-                if earlier is not None:
-                    rows[index] = earlier if earlier.review == "confirmed" else None
-                    settled.add(index)
-                    continue
+                )
+                if row is not None:
+                    row.evidence_quote, row.quote_hash = draft.candidate.evidence_quote, hashed
+                    row.ordinal = next_ordinal
+                    next_ordinal += 1
+                    claimed.add(row.id)
+            if row is None:
                 row = Assertion(
                     user_id=user.id, source_id=source_id, kind=kind,
                     evidence_quote=draft.candidate.evidence_quote, quote_hash=hashed,
@@ -325,10 +351,8 @@ def _write_assertions(
                 # extractor, and what is now known about the sender.
                 for name, value in _fields(draft).items():
                     setattr(row, name, value)
-                row.extraction_method, row.prompt_version = (
-                    draft.extraction_method,
-                    draft.prompt_version,
-                )
+                row.extraction_method = draft.extraction_method
+                row.prompt_version = draft.prompt_version
                 row.origin = draft.candidate.origin.value
             # Trust can change after the fact (a sender turns out to be suspicious).
             row.confidence = draft.confidence.value
@@ -344,8 +368,19 @@ def _write_assertions(
             session.delete(stale)
     session.flush()
 
-    # Supersession is recomputed every run, so dismissing a wrong "update" brings the
-    # original back. Pointers to the user's own corrections are never touched.
+    # Supersession and relations are recomputed every run, over exactly the facts that are
+    # still standing: one draft per stored row, and nothing the user rejected. So a
+    # dismissed "update" neither hides the original nor breaks the chain to a later,
+    # genuine update. Pointers to the user's own corrections are never touched.
+    standing: list[int] = []
+    seen_rows: set[UUID] = set()
+    for index, row in enumerate(rows):
+        if row is not None and row.id not in seen_rows:
+            seen_rows.add(row.id)
+            standing.append(index)
+    live = [result.assertions[i].model_copy(update={"superseded_by": None}) for i in standing]
+    relations = reconcile(live)
+
     corrections = set(
         session.scalars(
             select(Assertion.id).where(
@@ -353,22 +388,26 @@ def _write_assertions(
             )
         )
     )
-    for row in existing:
-        if row.superseded_by_id is not None and row.superseded_by_id not in corrections:
+    for index in standing:
+        row = rows[index]
+        # Only rows this run actually produced are reset. A confirmed fact whose source
+        # yielded nothing this time keeps whatever replaced it.
+        if row is not None and row.superseded_by_id not in corrections:
             row.superseded_by_id = None
-    for draft, row in zip(result.assertions, rows, strict=True):
+    for position, draft in enumerate(live):
+        row = rows[standing[position]]
         if row is None or draft.superseded_by is None or row.superseded_by_id is not None:
             continue
-        replacement = rows[draft.superseded_by]
-        if replacement is not None:  # a rejected replacement replaces nothing
+        replacement = rows[standing[draft.superseded_by]]
+        if replacement is not None and replacement.id != row.id:
             row.superseded_by_id = replacement.id
     session.execute(
         delete(AssertionRelation).where(
             AssertionRelation.user_id == user.id, AssertionRelation.made_by == "pipeline"
         )
     )
-    for relation in result.relations:
-        newer, older = rows[relation.from_index], rows[relation.to_index]
+    for relation in relations:
+        newer, older = rows[standing[relation.from_index]], rows[standing[relation.to_index]]
         if newer is not None and older is not None and newer.id != older.id:
             session.execute(
                 insert(AssertionRelation)
@@ -397,6 +436,12 @@ def prune_briefs(session: Session, user: User) -> None:
             and (item["item"].get("other_assertion_id") or item["item"]["assertion_id"]) in alive
         ]  # fmt: skip
         if not kept:
+            session.execute(
+                delete(Notification).where(
+                    Notification.user_id == user.id,
+                    Notification.deep_link == f"pwm://brief/{brief.id}",
+                )
+            )
             session.delete(brief)
         elif len(kept) != len(brief.items):
             brief.items = kept
@@ -439,25 +484,29 @@ def process_user(
 
 
 def _confirmed_aliases(session: Session, user: User) -> dict[str, str]:
-    """address -> the person it belongs to, for identifiers the user linked by hand."""
+    """Addresses that may speak for the same person: address -> one key per person.
+
+    Authority is per link. An address counts only if it was seen as such ("exact") or the
+    user placed it by hand ("user"), and only for people the user has linked at all. A
+    guessed address on the same person gets nothing, however many genuine links sit
+    beside it: otherwise confirming Priya's real second address would also bless an
+    impersonator's.
+    """
     rows = session.execute(
-        select(PersonIdentifier.value, PersonIdentifier.person_id).where(
+        select(PersonIdentifier.value, PersonIdentifier.person_id, PersonIdentifier.link).where(
             PersonIdentifier.user_id == user.id
         )
     ).all()
-    by_person: dict[UUID, list[str]] = {}
-    for address, person_id in rows:
-        by_person.setdefault(person_id, []).append(address)
-    user_linked = set(
-        session.scalars(
-            select(PersonIdentifier.person_id).where(
-                PersonIdentifier.user_id == user.id, PersonIdentifier.link == "user"
-            )
-        )
-    )
+    trusted: dict[UUID, list[str]] = {}
+    user_linked: set[UUID] = set()
+    for address, person_id, link in rows:
+        if link in ("exact", "user"):
+            trusted.setdefault(person_id, []).append(address)
+        if link == "user":
+            user_linked.add(person_id)
     return {
         address: sorted(addresses)[0]
-        for person_id, addresses in by_person.items()
+        for person_id, addresses in trusted.items()
         if person_id in user_linked
         for address in addresses
     }

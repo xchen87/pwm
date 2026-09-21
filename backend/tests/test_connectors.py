@@ -1,7 +1,9 @@
 import base64
 
+import pytest
+
 from pwm.connectors.demo import DemoMailbox
-from pwm.connectors.google import calendar_event, gmail_message
+from pwm.connectors.google import MalformedPayload, calendar_event, gmail_message, normalize_all
 from pwm.pipeline.prefilter import Route, route
 from pwm.sources import Party, SourceKind
 
@@ -16,8 +18,9 @@ def test_demo_mailbox_streams_newest_first_and_resumes() -> None:
     records = list(DemoMailbox().fetch(None))
     assert len(records) == 122
     assert records == sorted(records, key=lambda r: r.observed_at, reverse=True)
+    # The record stamped exactly at the cursor comes back too; ingestion ignores repeats.
     newer = list(DemoMailbox().fetch(records[10].observed_at))
-    assert len(newer) == 10
+    assert len(newer) == 11
 
 
 def test_a_gmail_message_becomes_a_source_record() -> None:
@@ -66,3 +69,59 @@ def test_a_calendar_event_becomes_a_source_record() -> None:
         {"id": "ev2", "summary": "Lease ends", "start": {"date": "2026-10-31"}}, ME
     )
     assert all_day.starts_at is not None and all_day.starts_at.day == 31
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"id": "a", "payload": {"headers": [{"name": "From"}], "parts": None}},
+        {"id": "b", "internalDate": "not-a-number", "payload": {}},
+        {"id": "c", "internalDate": "99999999999999999999", "payload": {}},
+        {"id": "d", "payload": {"mimeType": "text/plain", "body": {"data": "A"}}},
+        {"payload": {}},
+    ],
+)
+def test_malformed_gmail_payloads_are_a_named_error_not_a_crash(message: dict) -> None:
+    try:
+        gmail_message(message)
+    except MalformedPayload as problem:
+        assert str(problem) in {
+            "KeyError",
+            "TypeError",
+            "ValueError",
+            "OverflowError",
+            "Error",
+            "OSError",
+        }
+
+
+def test_the_first_from_header_wins_and_attachments_are_not_the_body() -> None:
+    message = {
+        "id": "x", "internalDate": "1788771120000",
+        "payload": {
+            "headers": [{"name": "From", "value": "real@bank.example"}, {"name": "From", "value": "fake@evil.example"}],
+            "parts": [
+                {"mimeType": "text/plain", "filename": "notes.txt", "body": {"data": b64("attachment text")}},
+                {"mimeType": "text/html", "body": {"data": b64("<p>html only</p>")}},
+            ],
+        },
+    }  # fmt: skip
+    record = gmail_message(message)
+    assert record.sender and record.sender.address == "real@bank.example"
+    assert record.body == ""
+
+
+def test_calendar_oddities_never_produce_naive_times_or_crashes() -> None:
+    event = calendar_event({"id": "e", "summary": None, "description": None, "updated": "2026-09-01T10:00:00",
+                            "start": {"dateTime": "2026-09-22T15:00:00"}}, ME)  # fmt: skip
+    assert (
+        event.observed_at.tzinfo is not None
+        and event.starts_at
+        and event.starts_at.tzinfo is not None
+    )
+    with pytest.raises(MalformedPayload):
+        calendar_event({"id": "e", "start": {"dateTime": "yesterday-ish"}}, ME)
+    records, skipped = normalize_all(
+        [{"id": "ok", "payload": {}, "internalDate": "0"}, {"payload": {}}], gmail_message
+    )
+    assert (len(records), skipped) == (1, 1)

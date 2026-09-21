@@ -173,3 +173,32 @@ def test_a_replaced_fact_is_marked_as_history_even_if_it_was_confirmed() -> None
 
 def test_before_a_day_is_about_the_future_not_history() -> None:
     assert detect_intent("What do I have to do before Friday?") is not Intent.HISTORY
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What did Christina promise me?",
+        "What is Danielle's phone number?",
+        "Is my rent 1450?",
+        "What did Tim promise?",
+    ],
+)
+def test_a_near_miss_name_or_number_is_never_answered_as_the_real_one(question: str) -> None:
+    facts = [
+        fact("1", direction="to_user", committed_by="Christine Park", value="send the lease"),
+        fact("2", kind="person", subject="Daniel Okafor", predicate="phone", value="555-0101", evidence_quote="my number is 555-0101", direction=None),
+        fact("3", kind="thing", subject="Apartment rent", predicate="monthly_rent", value="14500", evidence_quote="rent is 14500", direction=None),
+        fact("4", direction="to_user", committed_by="Tom Okafor", value="review the numbers"),
+    ]  # fmt: skip
+    assert retrieve(question, facts, TODAY).facts == []
+
+
+def test_a_corrected_typo_is_stated_not_hidden() -> None:
+    appointment = fact("1", kind="event", subject="Dentist appointment", predicate="date", value="2026-09-29T10:30",
+                       evidence_quote="rescheduled to September 29", direction=None)  # fmt: skip
+    retrieved = retrieve("When is my dentist apointment?", [appointment], TODAY)
+    assert retrieved.facts and retrieved.corrections == [("apointment", "appointment")]
+    assert "I read “apointment” as “appointment”" in (
+        TemplateReasoner().answer("q", retrieved).caveat or ""
+    )

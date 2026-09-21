@@ -7,7 +7,7 @@ judgement: those belong to the user and to code (TECHNICAL_BRIEF §4).
 from datetime import date
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class CandidateKind(StrEnum):
@@ -57,3 +57,17 @@ class Candidate(BaseModel):
     committed_by: str | None = Field(default=None, max_length=200)
     committed_to: str | None = Field(default=None, max_length=200)
     due: date | None = None
+
+    @model_validator(mode="after")
+    def _storable(self) -> "Candidate":
+        for name in (
+            "subject",
+            "predicate",
+            "value",
+            "evidence_quote",
+            "committed_by",
+            "committed_to",
+        ):
+            if "\x00" in (getattr(self, name) or ""):
+                raise ValueError(f"{name} contains a NUL character")
+        return self

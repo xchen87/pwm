@@ -42,6 +42,8 @@ class Retrieved(BaseModel):
     facts: list[Fact]
     # Set when the question named someone or something nothing is known about.
     unknown_terms: list[str] = []
+    # Spelling the search assumed, as (what was typed, what it was read as).
+    corrections: list[tuple[str, str]] = []
 
 
 _POSSESSIVE = re.compile(r"['’]s\b")
@@ -136,18 +138,28 @@ def _matches_intent(fact: Fact, intent: Intent) -> bool:
 def retrieve(question: str, facts: Sequence[Fact], today: date) -> Retrieved:
     intent = detect_intent(question)
     everything = {t for f in facts for t in _searchable(f)}
+    names = {w.lower() for w in re.findall(r"\b[A-Z][a-z]+", question)[1:]} | {
+        w.lower() for w in re.findall(r"(?<=[a-z,] )[A-Z][a-z]+", question)
+    }
     terms: list[str] = []
     unknown: list[str] = []
+    corrections: list[tuple[str, str]] = []
     for word in words(question):
         stem = _stem(word)
         if stem in _GENERIC:
             continue
         if stem not in everything:
-            # A slip of the keyboard should not read as "never heard of it".
-            close = difflib.get_close_matches(stem, everything, n=1, cutoff=0.84)
-            if not close:
+            # A slip of the keyboard should not read as "never heard of it" — but only for
+            # ordinary long words. A name or a number one letter away is a different person
+            # or a different amount, and guessing there answers the wrong question.
+            guessable = word.isalpha() and len(word) >= 7 and word not in names
+            close = (
+                difflib.get_close_matches(stem, everything, n=1, cutoff=0.88) if guessable else []
+            )
+            if not close or close[0][0] != stem[0]:
                 unknown.append(word)
                 continue
+            corrections.append((word, close[0]))
             stem = close[0]
         terms.append(stem)
     if unknown:
@@ -186,4 +198,4 @@ def retrieve(question: str, facts: Sequence[Fact], today: date) -> Retrieved:
             f for _, f in sorted(scored, key=lambda s: (-s[0], -s[1].observed_at.timestamp()))
         ]
 
-    return Retrieved(intent=intent, facts=ordered[:MAX_RESULTS])
+    return Retrieved(intent=intent, facts=ordered[:MAX_RESULTS], corrections=corrections)

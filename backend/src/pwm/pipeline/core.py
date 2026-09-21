@@ -7,7 +7,7 @@ code that production runs.
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from pwm.extraction.candidates import Candidate, CandidateKind, Origin
 from pwm.extraction.interface import ExtractionRequest, Extractor, ModelUsage, Triager
@@ -84,6 +84,13 @@ def acceptable(
     return True
 
 
+def _really_sent(source: SourceRecord) -> bool:
+    """Mail the user sent sits in their Sent folder. A message that merely claims the
+    user's address in From, delivered to the inbox, proves nothing about who they know."""
+    labels = set(source.provider_labels)
+    return "SENT" in labels or not labels
+
+
 def canonical_addresses(
     people: Sequence[ResolvedIdentity], confirmed_aliases: Mapping[str, str] | None = None
 ) -> dict[str, str]:
@@ -135,7 +142,7 @@ def run_pipeline(
     for source in ordered:
         # Writing to someone is the proof of a relationship. A calendar invite is not: anyone
         # can send one, and it would promote its sender to "known".
-        if source.kind is SourceKind.EMAIL and is_from_user(source, user):
+        if source.kind is SourceKind.EMAIL and is_from_user(source, user) and _really_sent(source):
             known_addresses |= {p.address.lower() for p in source.recipients}
         decision = route(source, user)
         outcome = SourceOutcome(source_id=source.id, route=decision)
@@ -165,10 +172,11 @@ def run_pipeline(
                     outcome.usage += extraction.usage
                     outcome.suspicious = extraction.suspicious_content
                     candidates = extraction.candidates
-        except ValidationError:
-            # One malformed or hostile message must never stop the rest of the user's mail.
-            # (Provider failures are different: they propagate, and the job retries.)
-            outcome.failed = "ValidationError"
+        except (ValueError, ArithmeticError) as problem:
+            # One malformed or hostile message must never stop the rest of the user's mail:
+            # bad values, impossible dates, numbers out of range. (Provider failures are a
+            # different family of exception: they propagate, and the job retries.)
+            outcome.failed = type(problem).__name__
             candidates = ()
         if source.kind is SourceKind.USER_CAPTURE and source.body.strip():
             # Whatever else is understood from it, what the user asked to remember is kept.

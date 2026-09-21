@@ -6,7 +6,7 @@ import { connectDemo, type ConnectionsView } from '../api/client';
 import { color, space } from '../theme';
 import { Button } from './Button';
 
-type Props = { connections: ConnectionsView; onConnected: () => void };
+type Props = { connections: ConnectionsView; onConnected: () => Promise<void> | void };
 
 export function Onboarding({ connections, onConnected }: Props) {
   const [working, setWorking] = useState(false);
@@ -17,9 +17,10 @@ export function Onboarding({ connections, onConnected }: Props) {
     setError(null);
     try {
       await connectDemo();
-      onConnected();
+      await onConnected();
     } catch {
       setError('That didn’t work. Is the server running?');
+    } finally {
       setWorking(false);
     }
   };

@@ -403,3 +403,162 @@ def test_notes_are_the_users_words_whatever_characters_they_start_with(
     for text in ("> quoted line\nmy note about it", "<span hidden>secret</span> plan", "x" * 1800):
         memory = review.remember(session, user, text, *stages)
         assert memory.value == text and memory.review == "confirmed"
+
+
+def _priced_thread(session: Session, user: User, bodies: list[str]) -> None:
+    from pwm.sources import Party, SourceKind, SourceRecord
+
+    bob = Party(name="Bob", address="bob@x.example")
+    ingest(
+        session, user,
+        [
+            SourceRecord(id=f"p{n}", kind=SourceKind.EMAIL, observed_at=datetime(2026, 9, n + 1, tzinfo=UTC),
+                         thread_id="t", sender=bob, recipients=(Party(name=user.name, address=user.email),),
+                         subject="quote", body=body)
+            for n, body in enumerate(bodies)
+        ],
+    )  # fmt: skip
+
+
+def _value(session: Session, value: str) -> Assertion:
+    return session.scalars(select(Assertion).where(Assertion.value == value)).one()
+
+
+def test_a_dismissed_update_does_not_break_the_chain_to_a_later_genuine_one(
+    session: Session, user: User
+) -> None:
+    _priced_thread(
+        session,
+        user,
+        [
+            "Our quote is $20 for it.",
+            "Sorry, the total is $25 for it.",
+            "Final: the total is $30 for it.",
+        ],
+    )
+    stages = (HeuristicTriager(), HeuristicExtractor())
+    process_user(session, user, *stages)
+    review.dismiss(session, user, _value(session, "25").id)
+    process_user(session, user, *stages)
+    assert _value(session, "20").superseded_by_id == _value(session, "30").id
+    assert _value(session, "30").superseded_by_id is None
+
+
+def test_a_confirmed_fact_stays_replaced_even_when_a_run_no_longer_produces_it(
+    session: Session, user: User
+) -> None:
+    from pwm.sources import Party, SourceKind, SourceRecord
+
+    stages = (HeuristicTriager(), HeuristicExtractor())
+    _priced_thread(session, user, ["Our quote is $20 for it."])
+    process_user(session, user, *stages)
+    old = _value(session, "20")
+    review.confirm(session, user, old.id)
+
+    update = SourceRecord(
+        id="p1", kind=SourceKind.EMAIL, observed_at=datetime(2026, 9, 5, tzinfo=UTC), thread_id="t",
+        sender=Party(name="Bob", address="bob@x.example"),
+        recipients=(Party(name=user.name, address=user.email),), subject="quote",
+        body="Update: the total is $30 for it.",
+    )  # fmt: skip
+    ingest(session, user, [update])
+    process_user(session, user, *stages)
+    new = _value(session, "30")
+    session.refresh(old)
+    assert old.superseded_by_id == new.id
+
+    class ForgetsTheFirstMail(HeuristicExtractor):
+        method = "v2"
+
+        def extract(self, request: ExtractionRequest) -> ExtractionResult:
+            return ExtractionResult() if request.source.id == "p0" else super().extract(request)
+
+    process_user(session, user, HeuristicTriager(), ForgetsTheFirstMail())
+    session.refresh(old)
+    assert (old.review, old.superseded_by_id) == ("confirmed", new.id)
+
+
+def test_two_near_identical_candidates_cannot_make_a_fact_replace_itself(
+    session: Session, user: User
+) -> None:
+    _one_mail(session, user, "The new price is $49 per month for all members.")
+    quote = "The new price is $49 per month"
+    v1 = Versioned("v1", lambda r: [_commitment(r, quote, "pay 49 per month")])
+    process_user(session, user, HeuristicTriager(), v1)
+    review.confirm(session, user, _rows(session)[0].id)
+    v2 = Versioned("v2", lambda r: [_commitment(r, quote, "pay 49 per month", "2026-10-01"),
+                                    _commitment(r, quote + " for all members", "pay 49 per month", "2026-11-01")])  # fmt: skip
+    process_user(session, user, HeuristicTriager(), v2)
+    for row in _rows(session):
+        assert row.superseded_by_id != row.id
+
+
+def test_a_different_fact_in_the_same_sentence_is_not_lost_to_a_dismissed_one(
+    session: Session, user: User
+) -> None:
+    from pwm.extraction.candidates import Candidate, CandidateKind, Origin
+
+    body = "Your plan renews on October 3 and the new price is $49 per month."
+    _one_mail(session, user, body)
+
+    def fact(request: ExtractionRequest, predicate: str, value: str) -> Candidate:
+        return Candidate(source_id=request.source.id, kind=CandidateKind.THING, subject="Plan", predicate=predicate,
+                         value=value, evidence_quote=body, origin=Origin.SOURCE_EXPLICIT)  # fmt: skip
+
+    process_user(
+        session,
+        user,
+        HeuristicTriager(),
+        Versioned("v1", lambda r: [fact(r, "renews", "2026-10-03")]),
+    )
+    review.dismiss(session, user, _rows(session)[0].id)
+    process_user(
+        session,
+        user,
+        HeuristicTriager(),
+        Versioned("v2", lambda r: [fact(r, "monthly_price", "49")]),
+    )
+    assert {(r.predicate, r.review) for r in _rows(session)} == {
+        ("renews", "rejected"),
+        ("monthly_price", "unreviewed"),
+    }
+
+
+def test_a_rephrased_quote_keeps_the_row_so_stored_briefs_survive(
+    session: Session, user: User
+) -> None:
+    _one_mail(session, user, "I will send the report by Friday.")
+    v1 = Versioned(
+        "v1", lambda r: [_commitment(r, "I will send the report by Friday.", "send the report")]
+    )
+    v2 = Versioned(
+        "v2", lambda r: [_commitment(r, "I will send the report by Friday", "send the report")]
+    )
+    process_user(session, user, HeuristicTriager(), v1)
+    before = _rows(session)[0].id
+    process_user(session, user, HeuristicTriager(), v2)
+    (row,) = _rows(session)
+    assert row.id == before and row.evidence_quote == "I will send the report by Friday"
+
+
+def test_confirming_a_genuine_link_does_not_bless_an_impersonators_guessed_one(
+    session: Session, user: User
+) -> None:
+    from pwm.db.models import Person
+    from pwm.pipeline.store import _confirmed_aliases
+
+    person = Person(user_id=user.id, display_name="Priya Raman")
+    session.add(person)
+    session.flush()
+    for address, link in (
+        ("priya@work.example", "exact"),
+        ("priya.raman@evil.example", "inferred"),
+        ("priya@home.example", "user"),
+    ):
+        session.add(
+            PersonIdentifier(user_id=user.id, person_id=person.id, value=address, link=link)
+        )
+    session.flush()
+    aliases = _confirmed_aliases(session, user)
+    assert set(aliases) == {"priya@work.example", "priya@home.example"}
+    assert len(set(aliases.values())) == 1

@@ -67,3 +67,36 @@ def test_delete_everything_leaves_no_trace(session: Session) -> None:
         assert client.get("/connections").json()["connected"] == []
     finally:
         app.dependency_overrides.clear()
+
+
+def test_outside_a_local_environment_nothing_is_served_without_authentication(
+    session: Session, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    client = fresh_client(session)
+    try:
+        client.post("/connections/demo")
+        monkeypatch.setenv("PWM_ENVIRONMENT", "production")
+        for method, path in (
+            ("get", "/home"),
+            ("get", "/commitments"),
+            ("delete", "/me"),
+            ("post", "/connections/demo"),
+        ):
+            assert getattr(client, method)(path).status_code == 401, path
+        monkeypatch.setenv("PWM_ENVIRONMENT", "local")
+        assert client.get("/home").json()["needs_attention_total"] >= 10  # nothing was deleted
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_a_removed_brief_takes_its_notification_with_it(session: Session) -> None:
+    from pwm.db.models import Notification
+
+    client = fresh_client(session)
+    try:
+        client.post("/connections/demo")
+        assert count(session, Notification) == 1
+        client.delete("/connections/demo")
+        assert count(session, Brief) == 0 and count(session, Notification) == 0
+    finally:
+        app.dependency_overrides.clear()

@@ -245,3 +245,59 @@ def test_an_unsolicited_calendar_invite_does_not_make_its_sender_known() -> None
     assert [a.confidence.value for a in result.assertions if a.candidate.source_id == "m1"] == [
         "medium"
     ]
+
+
+def test_a_nul_byte_in_mail_is_removed_not_fatal() -> None:
+    hostile = email("I'll send it by Friday\x00.")
+    assert "\x00" not in hostile.body
+    result = run_pipeline([hostile], USER, AlwaysRelevant(), HeuristicExtractor())
+    assert result.assertions and all(
+        "\x00" not in a.candidate.evidence_quote for a in result.assertions
+    )
+
+
+def test_impossible_dates_are_confined_to_their_message() -> None:
+    far = email("I'll pay you tomorrow.").model_copy(
+        update={"id": "far", "observed_at": datetime(9999, 12, 31, tzinfo=UTC)}
+    )
+    fine = email("I'll send the contract by Friday.").model_copy(update={"id": "fine"})
+    result = run_pipeline([far, fine], USER, AlwaysRelevant(), HeuristicExtractor())
+    assert any(a.candidate.source_id == "fine" for a in result.assertions)
+    assert next(o for o in result.outcomes if o.source_id == "far").failed == "OverflowError"
+
+
+@pytest.mark.parametrize(
+    "body",
+    ["<a" * 60_000, '<p style="font-size:1' + " " * 60_000, '<p style="' + "color:rgba(" * 20_000],
+)
+def test_hostile_markup_is_handled_in_linear_time(body: str) -> None:
+    import time
+
+    started = time.perf_counter()
+    visible_text(email(body))
+    assert time.perf_counter() - started < 2.0
+
+
+def test_mail_that_only_claims_to_be_from_the_user_makes_nobody_known() -> None:
+    attacker = Party(name="Pat", address="x@evil.example")
+    forged = email("See you Friday.").model_copy(
+        update={
+            "id": "forged",
+            "sender": USER,
+            "recipients": (attacker,),
+            "provider_labels": ("INBOX",),
+        }
+    )
+    bill = email("Your payment of $900 is due September 15.").model_copy(
+        update={"id": "bill", "sender": attacker, "observed_at": datetime(2026, 9, 8, tzinfo=UTC)}
+    )
+    result = run_pipeline([forged, bill], USER, AlwaysRelevant(), HeuristicExtractor())
+    assert [a.confidence.value for a in result.assertions if a.candidate.source_id == "bill"] == [
+        "medium"
+    ]
+
+
+def test_a_nonsense_clock_time_is_not_stored_as_a_time() -> None:
+    from pwm.pipeline.heuristic import _moment
+
+    assert _moment("Your appointment is on September 30 at 99:99 pm", MONDAY) == "2026-09-30"

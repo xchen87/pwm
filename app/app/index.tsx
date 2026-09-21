@@ -24,7 +24,7 @@ export default function YourWorld() {
     try {
       const current = await getConnections();
       setConnections(current);
-      if (current.connected.length > 0) setHome(await getHome());
+      if (current.connected.length > 0 || current.understood > 0) setHome(await getHome());
       setError(null);
     } catch {
       setError('Can’t reach your world right now. Pull down to try again.');
@@ -39,7 +39,9 @@ export default function YourWorld() {
     }, [load]),
   );
 
-  if (connections && connections.connected.length === 0) {
+  // Onboarding is for an empty world. With nothing connected but notes (or anything else)
+  // still held, the user must be able to reach them, and the screen that deletes them.
+  if (connections && connections.connected.length === 0 && connections.understood === 0) {
     return <Onboarding connections={connections} onConnected={load} />;
   }
 
@@ -69,6 +71,11 @@ export default function YourWorld() {
           </Pressable>
         </View>
         {error && <Text style={styles.error}>{error}</Text>}
+        {connections?.connected.length === 0 && (
+          <Pressable onPress={() => router.push('/settings')} accessibilityRole="link">
+            <Text style={styles.error}>Nothing is connected. Your notes are still here. Manage your data →</Text>
+          </Pressable>
+        )}
 
         <Pressable style={styles.ask} onPress={() => router.push('/ask')} accessibilityRole="link">
           <Text style={styles.askText}>Ask your world…</Text>

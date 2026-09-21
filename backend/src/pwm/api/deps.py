@@ -15,12 +15,16 @@ DbSession = Annotated[Session, Depends(get_session)]
 
 def current_user(session: DbSession) -> User:
     """Local development identity. Slice 4 replaces this with real authentication;
-    every handler already receives the user from here and nowhere else."""
+    every handler already receives the user from here and nowhere else.
+
+    There is no authentication yet, so outside a local environment nobody is anybody:
+    every request is refused, whatever rows exist.
+    """
     settings = get_settings()
+    if settings.environment != "local":
+        raise HTTPException(401, "sign in required")
     user = session.scalar(select(User).where(User.email == settings.dev_user_email))
     if user is None:
-        if settings.environment != "local":
-            raise HTTPException(401, "sign in required")
         user = ensure_user(
             session, Party(name=settings.dev_user_name, address=settings.dev_user_email)
         )

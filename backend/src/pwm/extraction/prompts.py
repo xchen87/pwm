@@ -80,7 +80,9 @@ def extraction_prefix() -> str:
     return f"{system}\n\n## Output schema\n\n{schema}\n\n## Examples\n\n{rendered}"
 
 
-_DELIMITERS = re.compile(r"<(/?\s*(?:source|earlier_message_in_thread|example)\b)", re.I)
+_DELIMITERS = re.compile(
+    r"<(/?\s*(?:source|earlier_message_in_thread|example|items|facts|question|system)\b)", re.I
+)
 
 
 def sealed(untrusted: str) -> str:

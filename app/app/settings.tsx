@@ -21,6 +21,7 @@ export default function Settings() {
   const [people, setPeople] = useState<PersonView[]>([]);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
     getConnections().then(setState, () => setError('Can’t reach your world right now.'));
@@ -29,6 +30,9 @@ export default function Settings() {
   useFocusEffect(load);
 
   const run = async (action: () => Promise<unknown>, leave: boolean) => {
+    if (busy) return; // a second tap must not repeat a destructive call
+    setBusy(true);
+    setError(null);
     try {
       await action();
       setConfirming(null);
@@ -36,6 +40,8 @@ export default function Settings() {
       else load();
     } catch {
       setError('That didn’t work. Try again.');
+    } finally {
+      setBusy(false);
     }
   };
 

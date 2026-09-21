@@ -20,7 +20,7 @@ from pwm.connectors.demo import DemoMailbox
 from pwm.connectors.service import sync
 from pwm.db.models import User
 from pwm.db.session import get_engine
-from pwm.extraction.factory import build_stages
+from pwm.extraction.factory import build_stages, build_writers
 from pwm.pipeline.store import ensure_user, process_user
 from pwm.pipeline.worker import run_all
 from pwm.sources import Party
@@ -55,7 +55,7 @@ def main() -> None:
         triager, extractor = build_stages()
         if command == "tick":
             jobs = run_all(session, triager, extractor)
-            briefs = generate_due(session, TemplateBriefWriter(), InboxNotifier())
+            briefs = generate_due(session, build_writers()[0], InboxNotifier())
             session.commit()
             print(f"ran {jobs} job(s), made {briefs} brief(s)")
             return

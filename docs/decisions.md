@@ -186,3 +186,23 @@ Each run refreshes unreviewed assertions with the current extraction, rules, and
 
 ### D45. Migrations are tested against data
 `backend/tests/test_migrations.py` loads a database at an earlier revision with the awkward rows (a correction and its original), upgrades to head, downgrades, and upgrades again. Migrating an empty database proves nothing.
+
+## 2026-09-21 — Demo-readiness review outcomes
+
+### D46. Authority is per link, not per person (completes D42)
+An address may speak for a person only if it was seen as that person's (`exact`) or the user placed it (`user`), and only once the user has linked that person at all. A guessed address gains nothing from sitting next to confirmed ones. The third review showed the per-person version turned the recommended action — confirm the genuine address — into the attack.
+
+### D47. Hostile input is cleaned at the door and confined to its message (completes D43)
+`SourceRecord` strips NUL and bounds text where records are created; `Candidate` rejects NUL; markup scanning is linear by construction (tags cannot span `<`, attributes and whitespace runs are bounded); per-source isolation covers bad values, impossible dates and overflow. Only provider failures fail a job.
+
+### D48. Model wording must stay inside its evidence (completes D39)
+For briefs and answers alike, the text a model writes is checked against the *content* it was given — never ids or timestamps: no links, no addresses, no numbers and no capitalised names that are not in that content, no certainty words, and a hedge whenever anything cited is unconfirmed. Reformatted dates and amounts pass. A failure never reaches the user: the same evidence is worded by the template instead. This is deliberately strict, because the fallback is always available and always safe.
+
+### D49. What stands is decided first; relations follow (completes D44)
+Each run decides which stored rows are still standing (one draft per row, nothing the user rejected), then recomputes supersession and relations over exactly those. Only rows the run produced are reset, so a confirmed fact whose source yields nothing this time keeps what replaced it. Reworded unreviewed rows are reused rather than re-created, which keeps stored briefs and their links intact.
+
+### D50. Typo tolerance never guesses at names or numbers, and always says so
+A one-letter difference in a name or an amount is a different person or a different amount. Fuzzy matching is limited to ordinary lower-case words of seven letters or more with the same first letter, and the answer states what was read as what.
+
+### D51. No authentication means no service outside `local`
+Until Slice 4 adds real accounts, every request outside a local environment is refused, regardless of what rows exist.

@@ -17,5 +17,7 @@ class DemoMailbox:
     def fetch(self, since: datetime | None) -> Iterator[SourceRecord]:
         records = [SourceRecord.model_validate(r) for r in json.loads(FIXTURE.read_text("utf-8"))]
         for record in sorted(records, key=lambda r: r.observed_at, reverse=True):
-            if since is None or record.observed_at > since:
+            # >= on purpose: a record stamped exactly at the cursor may be new, and
+            # ingestion ignores what it already has.
+            if since is None or record.observed_at >= since:
                 yield record
