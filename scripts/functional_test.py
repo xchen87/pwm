@@ -14,6 +14,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -137,8 +138,8 @@ def app_in_a_browser(api: Api, static_port: int) -> None:
         print("functional: WARNING no Chrome/Chromium found; in-browser checks were NOT run")
         return
     static = subprocess.Popen(
-        [sys.executable, "-m", "http.server", str(static_port), "--bind", "127.0.0.1"],
-        cwd=ROOT / "app/dist", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        [sys.executable, str(ROOT / "scripts/spa_server.py"), str(ROOT / "app/dist"), str(static_port)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )  # fmt: skip
     try:
         time.sleep(1)
@@ -149,6 +150,38 @@ def app_in_a_browser(api: Api, static_port: int) -> None:
             "Connect your life" in rendered(chrome, page),
             "a new user sees onboarding in the browser",
         )
+
+        # A real browser clicks "Continue with Google" and is carried through the stand-in
+        # for Google and back, redeeming the login code with the secret it kept.
+        with tempfile.TemporaryDirectory() as profile:
+            driven = subprocess.run(
+                ["node", str(ROOT / "scripts/signin_e2e.mjs"), page, chrome, profile],
+                capture_output=True, text=True, timeout=240, check=False,
+            )  # fmt: skip
+        outcome = (
+            json.loads(driven.stdout.strip().splitlines()[-1]) if driven.stdout.strip() else {}
+        )
+        check(
+            outcome.get("clicked") is True, "in a browser: the Google button is there and clickable"
+        )
+        check(
+            outcome.get("signedIn") is True,
+            "in a browser: sign-in completes and returns to the app",
+        )
+        check(
+            outcome.get("verifierCleared") is True,
+            "in a browser: the sign-in secret is used once and removed",
+        )
+        check(
+            outcome.get("tokenNotInUrl") is True,
+            "in a browser: the session token never appears in a URL",
+        )
+        check(
+            outcome.get("accountShown") is True,
+            "in a browser: Settings shows the signed-in Google account",
+        )
+
+        api.call("DELETE", "/me")
         api.post("/connections/demo")
         home = rendered(chrome, page)
         check(
@@ -190,7 +223,11 @@ def main() -> None:
         ["uv", "run", "uvicorn", "pwm.devtools.fake_google:app", "--port", str(google_port), "--log-level", "warning"],
         cwd=ROOT, env=ENV,
     )  # fmt: skip
-    server_env = {**ENV, "PWM_CORS_ORIGINS": f'["http://127.0.0.1:{static_port}"]'}
+    server_env = {
+        **ENV,
+        "PWM_CORS_ORIGINS": f'["http://127.0.0.1:{static_port}"]',
+        "PWM_APP_REDIRECTS": f'["pwm://auth", "http://127.0.0.1:{static_port}/auth"]',
+    }
     server = subprocess.Popen(
         ["uv", "run", "uvicorn", "pwm.api.main:app", "--port", str(port), "--log-level", "warning"],
         cwd=ROOT, env=server_env,
