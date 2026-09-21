@@ -12,6 +12,8 @@ export PATH="$HOME/.local/bin:$PATH"
 # The synthetic mailbox lives in September 2026. Pin the clock there so dates read sensibly.
 export PWM_FIXED_NOW="${PWM_FIXED_NOW:-2026-09-12T09:00:00+00:00}"
 export PWM_EXTRACTOR="${PWM_EXTRACTOR:-heuristic}"
+# The server fails closed; the demo is local development and says so.
+export PWM_ENVIRONMENT=local
 API_PORT="${API_PORT:-8000}"
 APP_PORT="${APP_PORT:-8081}"
 

@@ -40,7 +40,7 @@ from pwm.extraction.interface import (
     TriageResult,
 )
 from pwm.extraction.quotes import normalize
-from pwm.pipeline.core import PipelineResult, run_pipeline
+from pwm.pipeline.core import PipelineResult, event_key, run_pipeline
 from pwm.pipeline.text import similarity
 from pwm.pipeline.world import DraftAssertion, reconcile
 from pwm.sources import Party, SourceRecord
@@ -362,6 +362,24 @@ def _write_assertions(
     pairs: dict[int, Assertion] = {}
     for key, drafts in grouped.items():
         pairs.update(_pair_up(drafts, by_identity.get(key, [])))
+
+    # A calendar event is one event across its edited versions (each version is a separate
+    # source). If the user already reviewed it at this time, that row carries on: an edit to
+    # the description must not produce an unreviewed twin beside a confirmed event.
+    external = {internal: ext for ext, internal in source_ids.items()}
+    reviewed_events = {
+        (event_key(external[a.source_id]), a.value): a
+        for a in existing
+        if a.extraction_method == "calendar"
+        and a.review != "unreviewed"
+        and a.source_id in external
+    }
+    for index, draft in enumerate(result.assertions):
+        if index in pairs or draft.extraction_method != "calendar":
+            continue
+        carried = reviewed_events.get((event_key(draft.candidate.source_id), draft.candidate.value))
+        if carried is not None:
+            pairs[index] = carried
     claimed = {row.id for row in pairs.values()}
 
     def same_fact(row: Assertion, draft: DraftAssertion, source_id: UUID, kind: str) -> bool:
@@ -486,6 +504,15 @@ def _write_assertions(
                 )  # fmt: skip
                 .on_conflict_do_nothing(index_elements=["type", "from_id", "to_id"])
             )
+    # A called-off event is no longer happening, confirmed or not. Its rows are kept (the
+    # user's review is theirs) but marked, and every live view leaves them out.
+    for row in session.scalars(
+        select(Assertion).where(
+            Assertion.user_id == user.id, Assertion.extraction_method == "calendar"
+        )
+    ):
+        event = event_key(external.get(row.source_id, ""))
+        row.status = "cancelled" if event in result.called_off_events else None
     return created
 
 

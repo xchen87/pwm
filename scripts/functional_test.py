@@ -29,6 +29,7 @@ ENV = {
     **os.environ,
     "PWM_DATABASE_URL": DB_URL,
     "PWM_EXTRACTOR": "heuristic",
+    "PWM_ENVIRONMENT": "local",
     "PWM_FIXED_NOW": "2026-09-12T09:00:00+00:00",
 }
 CHECKS: list[str] = []

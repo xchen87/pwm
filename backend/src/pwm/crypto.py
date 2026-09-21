@@ -5,7 +5,8 @@ AES-256-GCM with a random nonce per value, and the purpose bound in as associate
 (a token cannot be replayed as a body). The key comes from configuration, never from the
 database, so a database dump alone reveals neither.
 
-Format: `enc:v2:<key id>:<base64 nonce+ciphertext>`. The key id is the first 8 hex digits
+Format: `enc:v2:<key id>:<base64 nonce+ciphertext>` (the earlier `enc:v1:<base64>` is
+still read, by trying every known key). The key id is the first 8 hex digits
 of the key's SHA-256, so a value says which key sealed it. New values use PWM_DATA_KEY;
 values sealed under a key listed in PWM_DATA_KEYS_OLD stay readable, which is what makes
 rotation possible: add the old key to that list, set the new one, run `pwm.cli reseal`.
@@ -16,6 +17,7 @@ bulk of someone's mail out of a database dump; it does not make a dump harmless.
 """
 
 import base64
+import binascii
 import hashlib
 import os
 
@@ -31,7 +33,7 @@ class DataKeyMissing(RuntimeError):
     """PWM_DATA_KEY is not set, so nothing secret can be stored or read."""
 
 
-class Undecryptable(ValueError):
+class Undecryptable(RuntimeError):
     """The value was sealed with a key this server does not have, or has been altered."""
 
 
@@ -55,10 +57,12 @@ def _current() -> bytes:
 
 def _keys() -> dict[str, bytes]:
     settings = get_settings()
-    keys = [
-        _decode(k)
-        for k in ([settings.data_key] if settings.data_key else []) + settings.data_keys_old
-    ]
+    keys = [_current()] if settings.data_key else []
+    for encoded in settings.data_keys_old:
+        try:
+            keys.append(_decode(encoded))
+        except (DataKeyMissing, binascii.Error, ValueError):
+            continue  # a mistyped old key must not take the current one down with it
     if not keys:
         raise DataKeyMissing("PWM_DATA_KEY is required to read tokens or message bodies")
     return {key_id(k): k for k in keys}
@@ -72,16 +76,24 @@ def encrypt(plaintext: str, purpose: str) -> str:
 
 def decrypt(value: str, purpose: str) -> str:
     parts = value.split(":", 3)
-    if len(parts) != 4 or parts[0] != "enc" or parts[1] != "v2":
+    if parts[:2] == ["enc", "v2"] and len(parts) == 4:
+        key = _keys().get(parts[2])
+        candidates, payload = ([key] if key else []), parts[3]
+    elif parts[:2] == ["enc", "v1"] and len(parts) == 3:
+        # The first format carried no key id: try every key we have. `reseal` upgrades these.
+        candidates, payload = list(_keys().values()), parts[2]
+    else:
         raise Undecryptable("not an encrypted value")
-    key = _keys().get(parts[2])
-    if key is None:
-        raise Undecryptable("sealed with a key this server does not have")
-    raw = base64.b64decode(parts[3])
     try:
-        return AESGCM(key).decrypt(raw[:12], raw[12:], purpose.encode()).decode("utf-8")
-    except InvalidTag:
-        raise Undecryptable("wrong purpose, or the value was modified") from None
+        raw = base64.b64decode(payload)
+    except (binascii.Error, ValueError):
+        raise Undecryptable("not an encrypted value") from None
+    for key in candidates:
+        try:
+            return AESGCM(key).decrypt(raw[:12], raw[12:], purpose.encode()).decode("utf-8")
+        except InvalidTag:
+            continue
+    raise Undecryptable("sealed with a key this server does not have, or modified")
 
 
 def is_encrypted(value: object) -> bool:

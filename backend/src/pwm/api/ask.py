@@ -58,6 +58,8 @@ def facts_for(session: Session, user: User) -> list[Fact]:
     for a in rows:
         if a.confidence == "low" and a.review != "confirmed":
             continue  # untrusted messages do not get to answer the user's questions
+        if a.kind == "event" and a.status == "cancelled":
+            continue  # called off: not something that is happening
         sender = a.source.record.get("sender") or {}
         who = sender.get("name") or sender.get("address") or "You"
         subject = a.source.record.get("subject") or "note"

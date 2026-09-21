@@ -414,3 +414,20 @@ def test_sender_authentication_verdicts(results: str, forged: bool) -> None:
 
     message = email("hello").model_copy(update={"headers": {"Authentication-Results": results}})
     assert failed_sender_authentication(message) is forged
+
+
+@pytest.mark.parametrize(
+    "results",
+    [
+        'mx.google.com; spf=fail smtp.mailfrom="x dmarc=pass"; dkim=fail; dmarc=fail',
+        "mx.google.com; dkim=fail (a (nested) dmarc=pass); spf=fail; dmarc=fail",
+        "mx.google.com; dkim=fail (unclosed dmarc=pass ; spf=fail; dmarc=fail",
+        'mx.google.com; spf=fail; dkim=fail reason="dmarc=pass"',
+        "mx.google.com; dmarc=pass; dmarc=fail",
+    ],
+)
+def test_nothing_a_sender_can_write_turns_a_failed_check_into_a_pass(results: str) -> None:
+    from pwm.pipeline.core import failed_sender_authentication
+
+    message = email("hello").model_copy(update={"headers": {"Authentication-Results": results}})
+    assert failed_sender_authentication(message) is True

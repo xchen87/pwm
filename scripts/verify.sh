@@ -4,6 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.local/bin:$PATH"
+export PWM_ENVIRONMENT=local
 step() { printf '\n== %s\n' "$1"; }
 
 step "backend: format, lint, types"

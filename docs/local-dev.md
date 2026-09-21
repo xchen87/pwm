@@ -20,6 +20,7 @@ uv sync                                   # create .venv and install dependencie
 docker compose up -d --wait db            # Postgres + pgvector on localhost:5433
 uv run alembic upgrade head               # apply migrations
 uv run python -m pwm.cli demo             # load the synthetic mailbox for the local user and process it
+export PWM_ENVIRONMENT=local              # the server fails closed; local development is opt-in
 uv run uvicorn pwm.api.main:app --reload  # API on http://localhost:8000
 ```
 

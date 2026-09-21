@@ -2,6 +2,9 @@
 (`docker compose up -d db`). They are skipped, loudly, when it is not reachable."""
 
 import os
+
+# The server fails closed: "local" (dev user, demo mailbox, Expo Go redirects) is opt-in.
+os.environ.setdefault("PWM_ENVIRONMENT", "local")
 from collections.abc import Iterator
 
 import pytest

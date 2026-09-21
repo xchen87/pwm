@@ -7,6 +7,7 @@ OAuth client to build against and verify, which this project does not have yet.
 
 import base64
 import binascii
+import hashlib
 import re
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
@@ -24,6 +25,10 @@ class MalformedPayload(ValueError):
 
 
 KEPT_HEADERS = ("List-Unsubscribe", "Precedence", "Auto-Submitted", "Authentication-Results")
+
+
+def _short(identifier: str) -> str:
+    return identifier if len(identifier) <= 120 else hashlib.sha256(identifier.encode()).hexdigest()
 
 
 def _required_id(payload: dict[str, Any]) -> str:
@@ -53,11 +58,45 @@ def _html_part(payload: dict[str, Any]) -> str:
     return ""
 
 
+MAX_HTML = 200_000
+INVISIBLE_BLOCKS = ("script", "style", "head", "title", "noscript", "template", "svg")
+_HIDING_RULE = re.compile(
+    r"([.#][\w-]{1,80})\s*\{[^{}]{0,400}?(?:display\s*:\s*none|visibility\s*:\s*hidden)", re.I
+)
+
+
+def _without_blocks(html: str) -> str:
+    """Drop elements whose contents a reader never sees. Linear: plain `find`, no
+    backtracking. An unclosed block hides everything after it, exactly as in a browser."""
+    lowered = html.lower()
+    kept: list[str] = []
+    position = 0
+    while True:
+        starts = [(lowered.find(f"<{name}", position), name) for name in INVISIBLE_BLOCKS]
+        starts = [(at, name) for at, name in starts if at >= 0]
+        if not starts:
+            kept.append(html[position:])
+            return "".join(kept)
+        at, name = min(starts)
+        kept.append(html[position:at])
+        closing = lowered.find(f"</{name}", at)
+        if closing < 0:
+            return "".join(kept)
+        end = lowered.find(">", closing)
+        position = len(html) if end < 0 else end + 1
+
+
 def _html_to_text(html: str) -> str:
-    """For mail with no plain-text part. Hidden elements go first, so text a reader would
-    never see does not become the body; then tags, then entities."""
-    visible = strip_hidden_markup(html)
-    visible = re.sub(r"(?is)<(script|style|head)\b.*?</\1>", " ", visible)
+    """For mail with no plain-text part: what a reader of the HTML would see.
+
+    Hidden elements go first (inline styles, the `hidden` attribute, and classes or ids that
+    a <style> block hides), then invisible blocks, then tags and entities. CSS offers more
+    ways to hide text than any filter will catch, which is one reason a fact from an unknown
+    sender is never better than medium confidence and always shows its source.
+    """
+    html = html[:MAX_HTML]
+    hidden_selectors = frozenset(m.lower() for m in _HIDING_RULE.findall(html))
+    visible = _without_blocks(strip_hidden_markup(html, hidden_selectors))
     visible = re.sub(r"(?i)<(br|/p|/div|/tr|/li|/h[1-6])\b[^<>]*>", "\n", visible)
     return unescape(re.sub(r"<[^<>]*>", "", visible)).strip()
 
@@ -151,8 +190,9 @@ def _calendar_event(event: dict[str, Any], owner: Party) -> SourceRecord:
         if a.get("email") and not a.get("self") and a["email"].lower() != owner.address.lower()
     )
     return SourceRecord(
-        # An edited event is a new, immutable source: the id carries its version.
-        id=f"gcal:{_required_id(event)}@{updated}"[:200],
+        # An edited event is a new, immutable source: the id carries its version. A very long
+        # event id is hashed rather than truncated, so the version is never cut off.
+        id=f"gcal:{_short(_required_id(event))}@{updated}",
         kind=SourceKind.CALENDAR_EVENT,
         observed_at=_aware(updated),
         sender=owner,

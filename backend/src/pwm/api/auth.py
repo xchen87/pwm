@@ -48,7 +48,7 @@ def config() -> AuthConfig:
     settings = get_settings()
     return AuthConfig(
         google=settings.google_configured,
-        dev_login=settings.environment == "local" and settings.dev_login,
+        dev_login=settings.is_local and settings.dev_login,
     )
 
 

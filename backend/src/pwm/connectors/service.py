@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from pwm import clock, crypto
@@ -16,6 +16,7 @@ from pwm.pipeline.store import ingest, process_user
 from pwm.sources import Party
 
 GOOGLE_CONNECTORS = ("gmail", "google_calendar")
+ERROR_RETRY = timedelta(hours=6)
 
 
 def google_client() -> GoogleClient:
@@ -36,6 +37,13 @@ def connection_for(session: Session, user: User, connector: Connector) -> Connec
         )  # fmt: skip
         session.add(connection)
     return connection
+
+
+def lock_user(session: Session, user: User) -> None:
+    """One writer per user at a time, for the rest of this transaction. Syncing,
+    disconnecting and rebuilding all take it first, so none sees another's half-done work.
+    (Same lock as `process_user`; it is re-entrant within a session.)"""
+    session.execute(select(func.pg_advisory_xact_lock(func.hashtext(str(user.id)))))
 
 
 def enqueue_sync(session: Session, user: User, connector: str) -> None:
@@ -68,6 +76,7 @@ def sync(
     Background jobs pass `create=False`: a job left over from before the user disconnected
     must do nothing. Only the user connecting creates a connection.
     """
+    lock_user(session, user)
     if create:
         connection = connection_for(session, user, connector)
     else:
@@ -100,14 +109,19 @@ def sync(
 def enqueue_due_syncs(session: Session) -> int:
     """Queue a sync for every healthy connection not synced recently. Run on a schedule:
     this is what keeps the world current after the first read."""
-    cutoff = clock.now() - timedelta(minutes=get_settings().sync_minutes)
-    due = session.scalars(
-        select(Connection).where(
-            Connection.connector.in_(GOOGLE_CONNECTORS),
-            Connection.status.in_(("ok", "error")),
-            (Connection.last_synced_at.is_(None)) | (Connection.last_synced_at < cutoff),
+    now = clock.now()
+    cutoff = now - timedelta(minutes=get_settings().sync_minutes)
+    due = [
+        c
+        for c in session.scalars(
+            select(Connection).where(
+                Connection.connector.in_(GOOGLE_CONNECTORS), Connection.status.in_(("ok", "error"))
+            )
         )
-    ).all()
+        # A connection that failed for good is tried again a few times a day, not every tick.
+        if c.last_synced_at is None
+        or c.last_synced_at < (now - ERROR_RETRY if c.status == "error" else cutoff)
+    ]
     for connection in due:
         user = session.get_one(User, connection.user_id)
         enqueue_sync(session, user, connection.connector)
@@ -120,6 +134,7 @@ def mark_sync_failed(session: Session, user: User, connector: str, error: str) -
     )
     if connection is not None:
         connection.status, connection.last_error = "error", error
+        connection.last_synced_at = clock.now()  # the clock the retry back-off runs on
 
 
 def build_connector(session: Session, user: User, name: str) -> Connector:
@@ -155,6 +170,9 @@ def disconnect(
     When the last Google connection goes, the grant is revoked at Google and the stored
     refresh token is destroyed, whether or not Google could be reached.
     """
+    # Wait for any sync of this user's data that is in flight, *then* look. Otherwise a page
+    # a worker is in the middle of writing is invisible here, and survives the disconnect.
+    lock_user(session, user)
     connection = session.scalar(
         select(Connection).where(Connection.user_id == user.id, Connection.connector == connector)
     )

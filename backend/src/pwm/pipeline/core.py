@@ -40,31 +40,39 @@ class PipelineResult(BaseModel):
     assertions: list[DraftAssertion]
     relations: list[DraftRelation]
     people: tuple[ResolvedIdentity, ...]
+    # Calendar events whose latest version is a cancellation.
+    called_off_events: set[str] = set()
 
 
-def silenced_calendar_versions(sources: Sequence[SourceRecord]) -> set[str]:
-    """Calendar sources that must not assert anything.
+def event_key(source_id: str) -> str:
+    """An edited event is a new immutable source whose id is `<event>@<updated>`."""
+    return source_id.split("@")[0]
 
-    An edited event is a new immutable source whose id is `<event>@<updated>`. For each
-    event: a cancelled latest version silences every version (the event is off); otherwise
-    an older version is silenced when the next one says the same time, so an edit to the
-    description or an RSVP does not leave two identical events. A version with a
+
+def calendar_versions(sources: Sequence[SourceRecord]) -> tuple[set[str], set[str]]:
+    """(silenced source ids, keys of events that have been called off).
+
+    For each event: a cancelled latest version silences every version (the event is off);
+    otherwise an older version is silenced when the next one says the same time, so an edit
+    to the description or an RSVP does not leave two identical events. A version with a
     *different* time keeps its voice, which is how a moved meeting shows up as a change.
     """
     versions: dict[str, list[SourceRecord]] = {}
     for source in sources:
         if source.kind is SourceKind.CALENDAR_EVENT:
-            versions.setdefault(source.id.split("@")[0], []).append(source)
+            versions.setdefault(event_key(source.id), []).append(source)
     silenced: set[str] = set()
-    for history in versions.values():
+    called_off: set[str] = set()
+    for key, history in versions.items():
         history.sort(key=lambda s: s.observed_at)
         if history[-1].event_status == "cancelled":
             silenced.update(s.id for s in history)
+            called_off.add(key)
             continue
         for older, newer in zip(history, history[1:], strict=False):
             if older.event_status == "cancelled" or older.starts_at == newer.starts_at:
                 silenced.add(older.id)
-    return silenced
+    return silenced, called_off
 
 
 def calendar_candidate(source: SourceRecord) -> Candidate | None:
@@ -110,26 +118,41 @@ def acceptable(
     return True
 
 
+_QUOTED = re.compile(r'"[^"]*"')
 _COMMENT = re.compile(r"\([^()]*\)")
-_VERDICT = re.compile(r"\b(dmarc|spf|dkim)\s*=\s*(\w+)", re.I)
+_UNCLOSED = re.compile(r"\([^;]*")
+_VERDICT = re.compile(r"(?:^|[;\s])(dmarc|spf|dkim)\s*=\s*(\w+)", re.I)
+
+
+def _verdicts(results: str) -> dict[str, set[str]]:
+    """Verdicts per method, with everything a sender can influence removed first: quoted
+    strings (a crafted MAIL FROM is echoed inside them), comments however nested, and an
+    unclosed comment up to the next result."""
+    cleaned = _QUOTED.sub(" ", results)
+    while (stripped := _COMMENT.sub(" ", cleaned)) != cleaned:
+        cleaned = stripped
+    cleaned = _UNCLOSED.sub(" ", cleaned)
+    found: dict[str, set[str]] = {}
+    for method, verdict in _VERDICT.findall(cleaned):
+        found.setdefault(method.lower(), set()).add(verdict.lower())
+    return found
 
 
 def failed_sender_authentication(source: SourceRecord) -> bool:
     """Whether the receiving mail server (Gmail) recorded that this message's From address is
-    probably forged: DMARC failed, or, where there is no DMARC verdict, both SPF and DKIM
-    failed outright. A DMARC pass settles it the other way, which is what keeps ordinary
+    probably forged: any DMARC failure, or, where there is no DMARC verdict, both SPF and
+    DKIM failing outright. A lone DMARC pass settles it the other way, which keeps ordinary
     forwarded and mailing-list mail (one check fails, DMARC passes) from being flagged.
-    Absent results prove nothing either way."""
+    A failure always outranks a pass. Absent results prove nothing either way."""
     results = next(
         (v for k, v in source.headers.items() if k.lower() == "authentication-results"), ""
     )
-    verdicts: dict[str, set[str]] = {}
-    for method, verdict in _VERDICT.findall(_COMMENT.sub(" ", results)):
-        verdicts.setdefault(method.lower(), set()).add(verdict.lower())
-    if "pass" in verdicts.get("dmarc", ()):
-        return False
-    if "fail" in verdicts.get("dmarc", ()):
+    verdicts = _verdicts(results)
+    dmarc = verdicts.get("dmarc", set())
+    if "fail" in dmarc:
         return True
+    if "pass" in dmarc:
+        return False
     return verdicts.get("spf") == {"fail"} and verdicts.get("dkim") == {"fail"}
 
 
@@ -184,7 +207,7 @@ def run_pipeline(
     # Someone the user has written to, as of each message. Merely having emailed the user
     # does not make a sender known.
     known_addresses: set[str] = set()
-    silenced = silenced_calendar_versions(ordered)
+    silenced, called_off = calendar_versions(ordered)
     thread_history: dict[str, list[str]] = {}
     outcomes: list[SourceOutcome] = []
     drafts: list[DraftAssertion] = []
@@ -265,5 +288,9 @@ def run_pipeline(
             )
 
     return PipelineResult(
-        outcomes=outcomes, assertions=drafts, relations=reconcile(drafts), people=people
+        outcomes=outcomes,
+        assertions=drafts,
+        relations=reconcile(drafts),
+        people=people,
+        called_off_events=called_off,
     )

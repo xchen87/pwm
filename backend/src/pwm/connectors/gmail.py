@@ -16,6 +16,7 @@ from pwm.google.account import GoogleAccount
 from pwm.google.http import GoogleError
 
 PAGE_SIZE = 50
+MAX_RESTARTS = 3
 UNWANTED = {"DRAFT", "SPAM", "TRASH"}
 ME = "/gmail/v1/users/me"
 
@@ -50,15 +51,21 @@ class GmailConnector:
         try:
             listing = self._account.get(f"{ME}/messages", params)
         except GoogleError as error:
-            if error.status != 400 or "pageToken" not in params:
+            restarts = int(state.get("restarts", 0))
+            if error.status != 400 or "pageToken" not in params or restarts >= MAX_RESTARTS:
                 raise
+            state = {**state, "restarts": restarts + 1}
             # The page token went stale mid-backfill. Start the listing again; what was
             # already read is ignored by ingestion.
             params.pop("pageToken")
             listing = self._account.get(f"{ME}/messages", params)
         records, skipped = self._messages([m["id"] for m in listing.get("messages") or []])
         page = listing.get("nextPageToken")
-        mode = {"mode": "backfill", "page": page} if page else {"mode": "incremental"}
+        mode = (
+            {"mode": "backfill", "page": page, "restarts": state.get("restarts", 0)}
+            if page
+            else {"mode": "incremental"}
+        )
         return FetchResult(
             records=records,
             skipped=skipped,

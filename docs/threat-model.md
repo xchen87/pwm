@@ -60,6 +60,9 @@ Lock screens and notification services see payloads. Control: payloads are a fix
 ### T9. Embedded-webview OAuth phishing
 Control: OAuth only through the system browser (`expo-web-browser` auth session) with PKCE and a deep link back (`pwm://`); app redirects are matched exactly (scheme, host, path); `state` is single-use, short-lived, and spent before Google is called; the app receives a single-use code, never a token in a URL, and that code is redeemable only with a secret held by the app instance that started the sign-in — which defeats both interception through the `pwm://` scheme and login CSRF (D62). Status: **built**; the native path has not been run on a device.
 
+### T9b. App impersonation through the custom URL scheme
+Any Android app may register `pwm://`. It cannot use a code from a sign-in our app started (D62), but it can start its own, show the user Google's genuine consent screen for our client, and receive a code bound to its own secret. Control: none sufficient yet. Remedy: claimed HTTPS redirects (universal links / app links) in Slice 5. Status: **open, documented** (D69). Does not affect the web app.
+
 ### T10. Incomplete deletion
 "Delete my data" must remove sources, assertions, embeddings, brief items, and cached context, and revoke tokens. Controls: every derived row carries `source_id`; cascade is enforced by foreign keys and verified by a test that fails if any row survives. Status: cascade **built and tested** for sources and users (`test_store.py`); token revocation and the user-facing delete flow arrive in Slice 4. Backups: retention period to be set and disclosed — **open**.
 
@@ -70,7 +73,7 @@ Controls: `golden/` and `.env` are gitignored; fixtures are generated from a scr
 Anything `EXPO_PUBLIC_*` ships to every user. Control: only the API base URL is public; all provider and Google credentials stay on the server. Status: **built** (documented in `docs/env.md`).
 
 ### T13. Cross-user access
-Controls: every row carries `user_id`; handlers receive the user from one dependency and every lookup checks ownership (another user's assertion returns 404 — tested). Status: **built**. Requests carry a session token; without one, the local development user is served only when `PWM_ENVIRONMENT=local` and dev login is on, and everywhere else the answer is 401 (tested).
+Controls: every row carries `user_id`; handlers receive the user from one dependency and every lookup checks ownership (another user's assertion returns 404 — tested). Status: **built**. Requests carry a session token. The server fails closed: without a token the development user is served only when `PWM_ENVIRONMENT=local` is set explicitly *and* the public URL is loopback; everywhere else the answer is 401 (tested, D67).
 
 ## Explicit non-goals for the MVP
 End-to-end encryption with user-held keys, on-device extraction, and self-hosting. Each would strengthen the posture and each is incompatible with shipping the MVP; revisit after the beta.

@@ -51,10 +51,12 @@ def allowed_redirect(settings: Settings, target: str) -> bool:
     """Exact match on scheme, host and path against the allow-list. Prefix matching would let
     `pwm://auth.evil` or `https://app.example.com.evil` through, and whoever receives the
     redirect receives a login code."""
-    if len(target) > 300:
+    # The raw string is what gets stored and redirected to, so the raw string is judged: no
+    # "?", "#", whitespace or control characters (urlsplit would quietly drop some of them).
+    if len(target) > 300 or re.search(r"[?#\s\x00-\x1f\\]", target):
         return False
     wanted = urlsplit(target)
-    if wanted.query or wanted.fragment or wanted.username or wanted.password:
+    if wanted.username or wanted.password:
         return False
     for entry in settings.app_redirects:
         allowed = urlsplit(entry)
@@ -65,11 +67,7 @@ def allowed_redirect(settings: Settings, target: str) -> bool:
         ):
             return True
     # Expo Go serves a development build from whatever address the laptop has.
-    return (
-        settings.environment == "local"
-        and wanted.scheme == "exp"
-        and wanted.path.endswith("/--/auth")
-    )
+    return settings.is_local and wanted.scheme == "exp" and wanted.path.endswith("/--/auth")
 
 
 def start(session: Session, settings: Settings, app_redirect: str, app_challenge: str) -> str:

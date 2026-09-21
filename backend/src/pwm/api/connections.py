@@ -58,7 +58,7 @@ def connections(session: DbSession, user: CurrentUser) -> ConnectionsView:
     )
     counts: dict[str, int] = {name: total for name, total in per_connector}
     rows = session.scalars(select(Connection).where(Connection.user_id == user.id)).all()
-    demo_on = get_settings().environment == "local"
+    demo_on = get_settings().is_local
     settings = get_settings()
     google_on = settings.google_configured
     waiting = (
@@ -101,7 +101,7 @@ def connections(session: DbSession, user: CurrentUser) -> ConnectionsView:
 
 @router.post("/connections/demo")
 def connect_demo(session: DbSession, user: CurrentUser) -> SyncResult:
-    if get_settings().environment != "local":
+    if not get_settings().is_local:
         raise HTTPException(404, "not available")
     added = service.sync(session, user, DemoMailbox(), *build_stages())
     if added:

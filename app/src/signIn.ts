@@ -36,11 +36,22 @@ async function takeVerifier(): Promise<string | null> {
  * or one intercepted by another app, is worth nothing. With no secret on hand, this app
  * did not start the sign-in, and refuses.
  */
-export async function finishSignIn(code: string): Promise<void> {
-  const verifier = await takeVerifier();
-  if (!verifier) throw new Error('This sign-in was not started here.');
-  const session = await exchangeLoginCode(code, verifier);
-  await setToken(session.token);
+const redeeming = new Map<string, Promise<void>>();
+
+export function finishSignIn(code: string): Promise<void> {
+  // On a phone both the auth-session result and the deep-link route deliver the same code,
+  // and React may run an effect twice. They share one redemption instead of racing for it.
+  let pending = redeeming.get(code);
+  if (!pending) {
+    pending = (async () => {
+      const verifier = await takeVerifier();
+      if (!verifier) throw new Error('This sign-in was not started here.');
+      const session = await exchangeLoginCode(code, verifier);
+      await setToken(session.token);
+    })();
+    redeeming.set(code, pending);
+  }
+  return pending;
 }
 
 /**

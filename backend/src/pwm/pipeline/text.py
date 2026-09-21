@@ -10,9 +10,9 @@ _FORWARD_MARKER = re.compile(r"^-{2,}\s*(Original|Forwarded) [Mm]essage\s*-{2,}"
 # A tag cannot contain another "<". That alone keeps scanning linear on hostile input such
 # as a megabyte of unclosed "<a<a<a"; no length limit is needed, and a limit would let a
 # long attribute smuggle a hidden element past the check.
-_OPEN_TAG = re.compile(r"<([a-zA-Z][\w-]*)\b([^<>]*)>")
+_OPEN_TAG = re.compile(r"<([a-zA-Z][\w-]*)\b((?:\"[^\"<]*\"|'[^'<]*'|[^<>\"'])*)>")
 _HIDING_STYLE = re.compile(
-    r"display\s{0,8}:\s{0,8}none|visibility\s{0,8}:\s{0,8}hidden|opacity\s{0,8}:\s{0,8}0(\.0{1,8})?\s{0,8}(;|$|[\"'])|"
+    r"(?:left|top|text-indent)\s?:\s?-\d{3,}|display\s{0,8}:\s{0,8}none|visibility\s{0,8}:\s{0,8}hidden|opacity\s{0,8}:\s{0,8}0(\.0{1,8})?\s{0,8}(;|$|[\"'])|"
     r"font-size\s{0,8}:\s{0,8}[0-2](\.\d{1,8})?\s{0,8}(px|pt|em|%)?\s{0,8}(;|$|[\"'])|"
     r"(max-)?(height|width)\s{0,8}:\s{0,8}0\s{0,8}(px)?\s{0,8}(;|$|[\"'])|"
     r"(?<![-\w])color\s{0,8}:\s{0,8}(#fff(fff)?\b|white\b|transparent\b|rgba\([^()]{0,40},\s{0,8}0\s{0,8}\))",
@@ -26,6 +26,21 @@ _SUSPICIOUS = re.compile(
     r"automated system processing|</?system>|\bassistant:",
     re.IGNORECASE,
 )
+
+
+_CLASS_OR_ID = re.compile(r"\b(class|id)\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s>]+))", re.I)
+
+
+def _named_hidden(attributes: str, hidden_selectors: frozenset[str]) -> bool:
+    """Whether the element carries a class or id that a stylesheet hides."""
+    for kind, double, single, bare in _CLASS_OR_ID.findall(attributes):
+        prefix = "." if kind.lower() == "class" else "#"
+        if any(
+            f"{prefix}{name}".lower() in hidden_selectors
+            for name in (double or single or bare).split()
+        ):
+            return True
+    return False
 
 
 def _hides(attributes: str) -> bool:
@@ -48,7 +63,7 @@ def _end_of_element(body: str, name: str, start: int) -> int:
     return len(body)
 
 
-def strip_hidden_markup(body: str) -> str:
+def strip_hidden_markup(body: str, hidden_selectors: frozenset[str] = frozenset()) -> str:
     """Remove elements styled so that a human reader would not see them, with their contents.
 
     Deliberately conservative about what it touches: everything outside a hidden element
@@ -57,7 +72,7 @@ def strip_hidden_markup(body: str) -> str:
     kept: list[str] = []
     position = 0
     while found := _OPEN_TAG.search(body, position):
-        if not _hides(found[2]):
+        if not (_hides(found[2]) or _named_hidden(found[2], hidden_selectors)):
             kept.append(body[position : found.end()])
             position = found.end()
             continue

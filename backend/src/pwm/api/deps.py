@@ -28,7 +28,7 @@ def current_user(session: DbSession, authorization: Annotated[str | None, Header
         if user is None:
             raise HTTPException(401, "sign in again")
         return user
-    if settings.environment != "local" or not settings.dev_login:
+    if not settings.is_local or not settings.dev_login:
         raise HTTPException(401, "sign in required")
     user = session.scalar(select(User).where(User.email == settings.dev_user_email))
     if user is None:

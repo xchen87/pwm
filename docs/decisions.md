@@ -249,7 +249,7 @@ Disconnecting a Google source deletes what it brought in; when the last one goes
 ## 2026-09-21 — Slice 4 review outcomes
 
 ### D62. The login code is bound to the app that started the sign-in (extends D56)
-PKCE protects the leg between us and Google. The leg between us and the app needed the same idea: the app generates a secret, sends its SHA-256 to `/auth/google/start`, and must present the secret to `/auth/session`. That one mechanism closes two holes the review found: another app registered for `pwm://` intercepting the code, and login CSRF (a link that signs the victim into the attacker's account). An app holding no secret refuses to redeem anything. Redirects are matched exactly (scheme, host, path), never by prefix; Expo Go's address is accepted only in `local`. A sign-in attempt is spent, and the spend committed, before Google is called.
+PKCE protects the leg between us and Google. The leg between us and the app needed the same idea: the app generates a secret, sends its SHA-256 to `/auth/google/start`, and must present the secret to `/auth/session`. That one mechanism closes two holes the review found: another app intercepting the code of a sign-in *the real app started*, and login CSRF (a link that signs the victim into the attacker's account). An app holding no secret refuses to redeem anything. Redirects are matched exactly (scheme, host, path), never by prefix; Expo Go's address is accepted only in `local`. A sign-in attempt is spent, and the spend committed, before Google is called.
 
 ### D63. Connections are created by users, never by jobs
 A queued job is a promise made in the past. It may act on a connection that still exists; it may never bring one back. Disconnecting deletes that connection's pending jobs, there is at most one pending sync per connection, and a job is `running` while it runs so its own follow-up page is not mistaken for a duplicate.
@@ -263,3 +263,15 @@ An edited event is a new immutable source (D58), but only a version that says so
 ### D66. Keys have ids, reads do not need them, and revocation is reported honestly (revises D57)
 `enc:v2:<key id>:…`; old keys listed in `PWM_DATA_KEYS_OLD` still read; `cli reseal` brings plaintext-era bodies and old-key values under the current key. Listing and inspecting what is known uses clear metadata and degrades to "quote without surroundings" when bodies cannot be read; anything that would reprocess returns 503 and changes nothing. If our copy of a grant is unreadable we cannot ask Google to revoke it, so "delete everything" says `google_access_revoked: false` instead of implying otherwise.
 Stated plainly, because an earlier comment overstated it: evidence quotes and extracted values are stored in the clear. Encrypting bodies keeps the bulk of someone's mail out of a database dump; it does not make a dump harmless.
+
+### D67. The server fails closed
+`PWM_ENVIRONMENT` defaults to `production`. Only an explicit `local`, on a loopback public URL, serves the development user without a session, offers the demo mailbox, or accepts Expo Go redirects. A forgotten variable must cost convenience, never safety.
+
+### D68. One writer per user
+Syncing, disconnecting and rebuilding a user's world each take the same per-user advisory lock before looking at anything. Without it, a disconnect could not see a page a worker was still writing and left it behind. (D63's "a job is running while it runs" was true only inside the job's own transaction; the lock is what actually serialises.)
+
+### D69. What binding the login code does not do (corrects D62)
+It does not stop a malicious app that registers the `pwm://` scheme from *starting its own* sign-in: the user sees the genuine consent screen, and the code comes back bound to the attacker's secret. This is the app-impersonation problem of custom URL schemes (RFC 8252 §8.6). The remedy is claimed HTTPS redirects — universal links on iOS, app links on Android — which need a real domain and the store identities of Slice 5. Until then it is a documented residual for the native app. The web app has none: a code started elsewhere lands in a tab that holds no secret and is refused.
+
+### D70. A calendar event is one event across its versions
+Versions are separate immutable sources (D58, D65), but the user's review belongs to the event: a confirmed event carries its confirmation through an edit that does not move it, and an event that is called off is marked `cancelled` — kept, with the user's review intact, and absent from every live view.

@@ -24,9 +24,10 @@ def run_next(session: Session, triager: Triager, extractor: Extractor) -> bool:
     if job is None:
         return False
     job.attempts += 1
-    # "running" while it runs: a follow-up page queued from inside this job must not be
-    # mistaken for a duplicate of it. `run_after` doubles as the start time.
-    job.status, job.run_after = "running", datetime.now(UTC)
+    # Not "pending" while it runs, so that a follow-up page queued from inside this job is not
+    # mistaken for a duplicate of it. This is only ever visible within this transaction: a
+    # worker that dies rolls back, and the job is pending again.
+    job.status = "running"
     user = session.get_one(User, job.user_id)
     caches: list[StageCache] = []
     try:
@@ -59,22 +60,7 @@ def run_next(session: Session, triager: Triager, extractor: Extractor) -> bool:
     return True
 
 
-STALE_AFTER = timedelta(minutes=30)
-
-
-def requeue_stale(session: Session) -> int:
-    """A worker that died mid-job leaves it "running". After a while, give it back."""
-    stale = session.scalars(
-        select(Job).where(Job.status == "running", Job.run_after < datetime.now(UTC) - STALE_AFTER)
-    ).all()
-    for job in stale:
-        job.status = "pending"
-    session.commit()
-    return len(stale)
-
-
 def run_all(session: Session, triager: Triager, extractor: Extractor) -> int:
-    requeue_stale(session)
     count = 0
     while run_next(session, triager, extractor):
         count += 1

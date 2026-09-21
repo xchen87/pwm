@@ -1,4 +1,5 @@
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -9,7 +10,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="PWM_", env_file=".env", extra="ignore")
 
     database_url: str = "postgresql+psycopg://pwm:pwm@localhost:5433/pwm"
-    environment: str = "local"
+    # Fails closed. Only "local" serves the development user without a session, offers the
+    # demo mailbox, and accepts Expo Go redirects; it must be asked for explicitly
+    # (scripts/demo.sh, scripts/verify.sh and the test suites do).
+    environment: str = "production"
     # Pins the clock for demos of the synthetic mailbox, e.g. 2026-09-12T09:00:00Z.
     fixed_now: datetime | None = None
     # Local development identity; matches the synthetic fixture. Replaced by real auth in Slice 4.
@@ -50,6 +54,13 @@ class Settings(BaseSettings):
     data_key: str | None = None
     # Previous keys, still accepted for reading, so the key can be rotated (see `cli reseal`).
     data_keys_old: list[str] = []
+
+    @property
+    def is_local(self) -> bool:
+        """Local development, and believably so: a server that says "local" while announcing a
+        public address is misconfigured, and is treated as production."""
+        host = urlsplit(self.public_url).hostname or ""
+        return self.environment == "local" and host in ("localhost", "127.0.0.1", "::1")
 
     @property
     def google_configured(self) -> bool:
