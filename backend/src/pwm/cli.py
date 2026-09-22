@@ -14,14 +14,14 @@ import argparse
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from pwm.brief.service import InboxNotifier, generate, generate_due
+from pwm.brief.service import generate, generate_due
 from pwm.brief.writer import TemplateBriefWriter
 from pwm.config import get_settings
 from pwm.connectors.demo import DemoMailbox
 from pwm.connectors.service import enqueue_due_syncs, sync
 from pwm.db.models import User
 from pwm.db.session import get_engine
-from pwm.extraction.factory import build_stages, build_writers
+from pwm.extraction.factory import build_notifier, build_stages, build_writers
 from pwm.pipeline.store import ensure_user, process_user, reseal
 from pwm.pipeline.worker import run_all
 from pwm.sources import Party
@@ -51,7 +51,7 @@ def main() -> None:
             return
         if command == "brief":
             user = session.scalars(select(User).where(User.email == settings.dev_user_email)).one()
-            brief = generate(session, user, TemplateBriefWriter(), InboxNotifier(), "weekly")
+            brief = generate(session, user, TemplateBriefWriter(), build_notifier(), "weekly")
             session.commit()
             print(f"brief {brief.id}: {len(brief.items)} item(s)")
             return
@@ -65,7 +65,7 @@ def main() -> None:
             session.commit()
             print(f"queued {due} sync(s)")
             jobs = run_all(session, triager, extractor)
-            briefs = generate_due(session, build_writers()[0], InboxNotifier())
+            briefs = generate_due(session, build_writers()[0], build_notifier())
             session.commit()
             print(f"ran {jobs} job(s), made {briefs} brief(s)")
             return

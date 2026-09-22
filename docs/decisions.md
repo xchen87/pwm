@@ -275,3 +275,18 @@ It does not stop a malicious app that registers the `pwm://` scheme from *starti
 
 ### D70. A calendar event is one event across its versions
 Versions are separate immutable sources (D58, D65), but the user's review belongs to the event: a confirmed event carries its confirmation through an edit that does not move it, and an event that is called off is marked `cancelled` — kept, with the user's review intact, and absent from every live view.
+
+## 2026-09-21 — Slice 5, the parts a laptop can build
+
+### D71. Push is announced, never described
+`ExpoPushNotifier` writes the in-app inbox row first and then asks Expo to deliver the same fixed title and a deep link to every registered device. Tokens Expo reports dead are dropped; Expo being unreachable loses nothing but the buzz. Devices register with a validated Expo token and unregister on sign-out. Selected by `PWM_PUSH_URL`; empty means inbox only, which is what tests and the demo use.
+**Not verified:** no push has reached a phone. `getExpoPushTokenAsync` needs an EAS project id, which needs the founder's Expo account; the app declines quietly without one.
+
+### D72. Deep links and app links
+`pwm://brief/<id>` opens the brief and counts the tap; `GET /briefs/{id}` is owner-checked. The identities that let a phone trust `https://<api host>/auth` as ours — the remedy for the custom-scheme residual in D69 — are served at `/.well-known/…` from configuration and are absent until the store identities exist. `app.json` and `eas.json` carry the placeholders and say what to fill in.
+
+### D73. Optional app lock
+Biometrics or passcode on foreground, off by default, stored on the device, not offered on the web. Untested on a device.
+
+### D74. A first read rebuilds the world on the first page, every tenth, and the last
+Rebuilding is a whole-mailbox pass (D19, D44). Doing it per page made a 90-day read quadratic; doing it three or four times keeps "something within minutes" without that. Incremental syncs rebuild once each.

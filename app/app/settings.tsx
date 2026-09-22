@@ -16,6 +16,8 @@ import {
   signOut,
 } from '../src/api/client';
 import { Button } from '../src/components/Button';
+import { lockAvailable, lockEnabled, setLockEnabled } from '../src/lock';
+import { disablePush, enablePush } from '../src/push';
 import { clearToken } from '../src/session';
 import { signInWithGoogle } from '../src/signIn';
 import { color, space } from '../src/theme';
@@ -25,6 +27,8 @@ export default function Settings() {
   const [state, setState] = useState<ConnectionsView | null>(null);
   const [people, setPeople] = useState<PersonView[]>([]);
   const [me, setMe] = useState<Me | null>(null);
+  const [lock, setLock] = useState<{ available: boolean; on: boolean }>({ available: false, on: false });
+  const [push, setPush] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -33,6 +37,7 @@ export default function Settings() {
     getConnections().then(setState, () => setError('Can’t reach your world right now.'));
     getPeople().then(setPeople, () => undefined);
     getMe().then(setMe, () => undefined);
+    Promise.all([lockAvailable(), lockEnabled()]).then(([available, on]) => setLock({ available, on }));
   }, []);
   useFocusEffect(load);
 
@@ -60,7 +65,7 @@ export default function Settings() {
           <Text style={styles.muted}>Signed in with Google as {me.email}</Text>
           <Button
             label="Sign out"
-            onPress={() => run(() => signOut().finally(clearToken), true)}
+            onPress={() => run(() => disablePush().then(signOut).finally(clearToken), true)}
           />
         </View>
       )}
@@ -128,6 +133,36 @@ export default function Settings() {
             </View>
           )),
       )}
+
+      <Text style={styles.section}>On this phone</Text>
+      {lock.available ? (
+        <View style={styles.card}>
+          <Text style={styles.label}>App lock {lock.on ? 'is on' : 'is off'}</Text>
+          <Text style={styles.muted}>Ask for your fingerprint, face or passcode whenever the app opens.</Text>
+          <Button
+            label={lock.on ? 'Turn off' : 'Turn on'}
+            onPress={() => setLockEnabled(!lock.on).then(() => setLock({ ...lock, on: !lock.on }))}
+          />
+        </View>
+      ) : (
+        <Text style={styles.muted}>App lock needs a phone with a fingerprint, face or passcode set up.</Text>
+      )}
+      <View style={styles.card}>
+        <Text style={styles.label}>Notifications</Text>
+        <Text style={styles.muted}>
+          A note when a new World Brief is ready. The notification says only that; nothing personal ever goes to a lock screen.
+        </Text>
+        <Button
+          label="Allow notifications"
+          onPress={() =>
+            enablePush().then(
+              (on) => setPush(on ? 'On for this phone.' : 'Not available here (a real phone with a store build is needed).'),
+              () => setPush('That didn’t work.'),
+            )
+          }
+        />
+        {push && <Text style={styles.muted}>{push}</Text>}
+      </View>
 
       <Text style={styles.section}>What I hold</Text>
       <Text style={styles.muted}>{state?.understood ?? 0} things understood from what you connected.</Text>

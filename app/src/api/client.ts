@@ -91,6 +91,11 @@ export const getAuthConfig = () => request<AuthConfig>('GET', '/auth/config');
 export const getMe = () => request<Me>('GET', '/auth/me');
 export const signOut = () => request<unknown>('POST', '/auth/logout');
 
+export const registerDevice = (push_token: string, platform: 'ios' | 'android') =>
+  request<unknown>('POST', '/devices', { push_token, platform });
+export const unregisterDevice = (push_token: string, platform: 'ios' | 'android') =>
+  request<unknown>('DELETE', '/devices', { push_token, platform });
+
 export type EventName =
   | 'brief_opened'
   | 'item_useful'

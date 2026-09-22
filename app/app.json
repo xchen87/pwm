@@ -7,7 +7,9 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.personalworldmodel.app",
+      "associatedDomains": []
     },
     "android": {
       "adaptiveIcon": {
@@ -16,7 +18,9 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.personalworldmodel.app",
+      "intentFilters": []
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -26,8 +30,24 @@
       "expo-router",
       "expo-status-bar",
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png"
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Unlock Your World with Face ID."
+        }
+      ]
     ],
-    "scheme": "pwm"
+    "scheme": "pwm",
+    "extra": {
+      "eas": {}
+    },
+    "_notes": "Fill in before a store build: extra.eas.projectId (from `eas init`), ios.associatedDomains [\"applinks:<api host>\"], android.intentFilters (autoVerify https to <api host> /auth, /brief/*, /assertion/*). The same host must serve /.well-known files: docs/env.md."
   }
 }

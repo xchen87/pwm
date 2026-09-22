@@ -17,6 +17,7 @@ from pwm.sources import Party
 
 GOOGLE_CONNECTORS = ("gmail", "google_calendar")
 ERROR_RETRY = timedelta(hours=6)
+PROCESS_EVERY = 10
 
 
 def google_client() -> GoogleClient:
@@ -96,10 +97,15 @@ def sync(
         connection.status, connection.last_error = "needs_reconnect", "GrantRevoked"
         return 0
     added = ingest(session, user, result.records, connector=connector.name, enqueue_job=False)
+    page = int(connection.pages_synced or 0) + 1
+    connection.pages_synced = 0 if not result.more else page
     connection.cursor = result.cursor
     connection.last_synced_at = clock.now()
     connection.status, connection.last_error = ("syncing" if result.more else "ok"), None
-    if added:
+    # Rebuilding the world is a whole-mailbox pass. During a long first read it runs on the
+    # first page (something to see within minutes), every tenth page, and the last; not on
+    # every page, which would make a 90-day read quadratic.
+    if added and (not result.more or page == 1 or page % PROCESS_EVERY == 0):
         process_user(session, user, triager, extractor)
     if result.more:
         enqueue_sync(session, user, connector.name)

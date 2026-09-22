@@ -10,7 +10,7 @@ from pwm.config import get_settings
 from pwm.connectors import service
 from pwm.connectors.demo import DemoMailbox
 from pwm.db.models import Assertion, Connection, Source, User
-from pwm.extraction.factory import build_stages, build_writers
+from pwm.extraction.factory import build_notifier, build_stages, build_writers
 from pwm.pipeline.store import ensure_user
 from pwm.sources import Party
 
@@ -105,7 +105,7 @@ def connect_demo(session: DbSession, user: CurrentUser) -> SyncResult:
         raise HTTPException(404, "not available")
     added = service.sync(session, user, DemoMailbox(), *build_stages())
     if added:
-        briefs.generate(session, user, build_writers()[0], briefs.InboxNotifier(), "weekly")
+        briefs.generate(session, user, build_writers()[0], build_notifier(), "weekly")
     session.commit()
     return SyncResult(new_sources=added, understood=_understood(session, user))
 

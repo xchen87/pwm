@@ -8,10 +8,10 @@ import {
   getLatestBrief,
   markNotificationsRead,
   recordEvent,
-} from '../src/api/client';
-import { Button } from '../src/components/Button';
-import { ChangeCard } from '../src/components/ChangeCard';
-import { color, space } from '../src/theme';
+} from '../../src/api/client';
+import { Button } from '../../src/components/Button';
+import { ChangeCard } from '../../src/components/ChangeCard';
+import { color, space } from '../../src/theme';
 
 export default function WorldBrief() {
   const router = useRouter();

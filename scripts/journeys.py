@@ -271,3 +271,25 @@ def journey_50_google_sign_in_and_sync(api: Any, check: Any, run: Any) -> None:
         check(api.get("/home", expect=401) is not None, "a signed-out session is refused")
     finally:
         api.token = None
+
+
+def journey_60_phone_delivery(api: Any, check: Any, run: Any) -> None:
+    api.post("/connections/demo")  # the previous journey left this user empty
+    token = "ExponentPushToken[functionaltestdevice0]"
+    api.post("/devices", {"push_token": token, "platform": "android"})
+    api.post("/devices", {"push_token": "nope", "platform": "android"}, expect=422)
+    api.post("/notifications/read")  # a new "ready" is only sent once the last one was seen
+    brief = api.post("/briefs?period=weekly")
+    check(brief["items"], "a brief is made")
+    notes = api.get("/notifications")
+    check(
+        notes and notes[0]["deep_link"] == f"pwm://brief/{brief['id']}",
+        "the notification deep-links to that brief",
+    )
+    check(
+        api.get(f"/briefs/{brief['id']}")["id"] == brief["id"],
+        "the deep link's brief can be fetched by id",
+    )
+    api.get("/briefs/00000000-0000-0000-0000-000000000000", expect=404)
+    api.call("DELETE", "/devices", {"push_token": token, "platform": "android"})
+    api.get("/.well-known/assetlinks.json", expect=404)

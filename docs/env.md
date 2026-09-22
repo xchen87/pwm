@@ -22,6 +22,9 @@ Backend variables use the `PWM_` prefix and may be placed in a `.env` file at th
 | `PWM_SYNC_MINUTES` | `15` | How often `pwm.cli tick` (run it from cron or a scheduler) asks each connection for what is new. |
 | `PWM_BACKFILL_DAYS` | `90` | How far back the first sync reads. |
 | `PWM_GOOGLE_AUTH_URL`, `_TOKEN_URL`, `_REVOKE_URL`, `_USERINFO_URL`, `_API_URL` | Google's | Overridden only to point at the stand-in (`pwm.devtools.fake_google`). |
+| `PWM_PUSH_URL` | Expo's push endpoint | Where brief notifications are sent. Empty disables push (in-app inbox only); tests and the demo set it empty. |
+| `PWM_APPLE_APP_ID` | unset | `<TEAM_ID>.<bundle id>`; enables `/.well-known/apple-app-site-association`. |
+| `PWM_ANDROID_PACKAGE` / `PWM_ANDROID_CERT_FINGERPRINTS` | unset | Package name and JSON list of SHA-256 signing fingerprints; enable `/.well-known/assetlinks.json`. |
 | `PWM_CORS_ORIGINS` | `["http://localhost:8081","http://localhost:19006"]` | JSON list of web origins allowed to call the API. |
 
 App variables are read by Expo at build time. Anything prefixed `EXPO_PUBLIC_` is compiled into the app bundle and is visible to anyone who has the app: never put a secret in one.

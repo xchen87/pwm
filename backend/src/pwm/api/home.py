@@ -13,7 +13,7 @@ from pwm.brief import service
 from pwm.brief.items import select_items
 from pwm.brief.writer import TemplateBriefWriter, WrittenItem
 from pwm.db.models import Assertion, Brief, Notification
-from pwm.extraction.factory import build_writers
+from pwm.extraction.factory import build_notifier, build_writers
 
 router = APIRouter()
 FIRST_VISIT_LOOKBACK = timedelta(days=14)
@@ -116,7 +116,7 @@ def _view(brief: Brief) -> BriefView:
 def generate_brief(session: DbSession, user: CurrentUser, period: str = "weekly") -> BriefView:
     if period not in service.PERIODS:
         raise HTTPException(422, "period must be daily or weekly")
-    brief = service.generate(session, user, build_writers()[0], service.InboxNotifier(), period)
+    brief = service.generate(session, user, build_writers()[0], build_notifier(), period)
     session.commit()
     return _view(brief)
 
@@ -129,12 +129,21 @@ def latest_brief(session: DbSession, user: CurrentUser) -> BriefView:
     return _view(brief)
 
 
+@router.get("/briefs/{brief_id}")
+def brief_by_id(brief_id: UUID, session: DbSession, user: CurrentUser) -> BriefView:
+    """A notification's deep link opens this one. Whoever asks must own it."""
+    brief = session.get(Brief, brief_id)
+    if brief is None or brief.user_id != user.id:
+        raise HTTPException(404, "no such brief")
+    return _view(brief)
+
+
 @router.get("/notifications")
 def notifications(session: DbSession, user: CurrentUser) -> list[NotificationView]:
     rows = session.scalars(
         select(Notification)
         .where(Notification.user_id == user.id)
-        .order_by(Notification.created_at.desc())
+        .order_by(Notification.created_at.desc(), Notification.sequence.desc())
         .limit(20)
     )
     return [

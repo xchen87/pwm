@@ -23,8 +23,8 @@ Working constraint (founder, 2026-09-21): reach a showable, demo-ready MVP **wit
 | Slice 2 — What changed + World Brief | done; independently reviewed, findings fixed | commits `00a624e` + review-fix commit; verify green |
 | Slice 3 — Ask Your World + Remember / Correct / Forget | done; independently reviewed, findings fixed | same |
 | Demo readiness — onboarding, connections/disconnect/delete, same-person confirmation, demo launcher and script, in-browser checks | done; independently reviewed, findings fixed | commit `926d450` + next; verify green (122 tests, 87 functional checks incl. the built app in headless Chrome) |
-| Slice 4 — accounts, real Gmail/Calendar | **built against a stand-in for Google; unverified against Google itself** (founder chose this on 2026-09-21); independently reviewed, findings fixed | branch `slice-4`; verify green |
-| Slice 5 — phone builds, real push | not started; store/TestFlight builds **need founder** (Expo / Apple / Google accounts) | |
+| Slice 4 — accounts, real Gmail/Calendar | **built against a stand-in for Google; unverified against Google itself**; two independent reviews, findings fixed; merged | `master`; verify green |
+| Slice 5 — phone delivery | push, device registration, deep links, app lock, app-link plumbing and store config **built and tested against a stand-in for Expo**; independent review in progress. **Never run on a phone**: builds, push tokens and app links need the founder's Expo / Apple / Google identities | `master`; verify green |
 | Live LLM evaluation | blocked: **needs founder** (API key + spend approval) | |
 
 ## Waiting on the founder
@@ -249,3 +249,9 @@ Could not break: challenge enforcement and constant-time comparison; login CSRF;
 - `scripts/verify.sh`: **ALL GREEN** — 294 backend/eval tests (suite repeated three times, stable), 8 app tests, 132 functional checks including a real Chrome signing in; eval gate no regression across 24 scores.
 
 **Reviews to date: six.** 86 ranked findings. Each round found fewer and less severe problems in the code it covered, but every round found *something*, and twice found that a previous fix did not hold. Slice 4 has also never touched Google. Both facts argue for treating first contact with real accounts as a test phase, not a launch.
+
+**Merged.** `slice-4` fast-forwarded into `master` at `7630ecd`. From here on, work is committed directly to `master` (founder's instruction).
+
+**Slice 5 — phone delivery, the parts a laptop can build.** Push through Expo behind the existing `Notifier` (inbox row first, generic title, dead tokens dropped, Expo down loses nothing); device registration and unregistration on sign-out; `pwm://brief/<id>` deep links with an owner-checked `GET /briefs/{id}`; `/.well-known` app-link files served from configuration (D72, the remedy for D69); optional biometric app lock; `app.json`/`eas.json` with the identifiers and a note listing what to fill in. A first read now rebuilds the world on the first page, every tenth, and the last, instead of on every page (D74). Notifications carry an insertion sequence so "newest first" holds under a pinned clock. Decisions D71–D74.
+- **Nothing here has run on a phone.** Push tokens need an EAS project id; app links need Apple/Google identities; the lock needs biometrics. All of that is the founder's, and the code steps aside quietly without it.
+- `scripts/verify.sh`: **ALL GREEN** — 300 backend/eval tests, 8 app tests, 145 functional checks.

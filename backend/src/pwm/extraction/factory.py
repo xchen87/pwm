@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING
 
 from pwm.ask.answer import Reasoner, TemplateReasoner
+from pwm.brief.service import InboxNotifier, Notifier
 from pwm.brief.writer import BriefWriter, TemplateBriefWriter
 from pwm.config import get_settings
 from pwm.extraction.interface import Extractor, Triager
@@ -66,3 +67,14 @@ def provider_errors() -> tuple[type[Exception], ...]:
     import anthropic
 
     return (anthropic.AnthropicError, ProviderNotConfigured)
+
+
+def build_notifier() -> Notifier:
+    """How briefs are announced: through Expo push when a push URL is configured, and only
+    in the in-app inbox otherwise. Both write the inbox row; both send the same generic text."""
+    settings = get_settings()
+    if settings.push_url:
+        from pwm.push import ExpoPushNotifier
+
+        return ExpoPushNotifier(url=settings.push_url)
+    return InboxNotifier()

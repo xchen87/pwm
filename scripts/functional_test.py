@@ -30,6 +30,7 @@ ENV = {
     "PWM_DATABASE_URL": DB_URL,
     "PWM_EXTRACTOR": "heuristic",
     "PWM_ENVIRONMENT": "local",
+    "PWM_PUSH_URL": "",  # never Expo's real push service from a test
     "PWM_FIXED_NOW": "2026-09-12T09:00:00+00:00",
 }
 CHECKS: list[str] = []

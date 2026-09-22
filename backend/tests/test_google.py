@@ -819,3 +819,24 @@ def test_hostile_html_is_read_in_linear_time() -> None:
     _html_to_text("<style>" * 60_000)
     _html_to_text("<div><style x>" * 30_000)
     assert time.perf_counter() - started < 2.0
+
+
+def test_a_long_first_read_rebuilds_the_world_on_the_first_page_then_every_tenth(
+    api: TestClient, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import pwm.connectors.service as svc
+
+    runs: list[int] = []
+    real = svc.process_user
+    monkeypatch.setattr(svc, "process_user", lambda *a, **k: runs.append(1) or real(*a, **k))
+    monkeypatch.setattr("pwm.connectors.gmail.PAGE_SIZE", 10)
+    user = signed_in_user(api, session)
+    gmail = service.build_connector(session, user, "gmail")
+    pages = 0
+    while service.sync(session, user, gmail, *STAGES) or pages == 0:
+        pages += 1
+        if pages > 30:
+            break
+    assert pages == 11  # 104 messages, 10 per page, then one empty final page
+    assert len(runs) == 3  # first page, tenth page, last page
+    assert session.scalar(select(func.count()).where(Source.connector == "gmail")) == 104

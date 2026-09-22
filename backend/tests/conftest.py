@@ -5,6 +5,7 @@ import os
 
 # The server fails closed: "local" (dev user, demo mailbox, Expo Go redirects) is opt-in.
 os.environ.setdefault("PWM_ENVIRONMENT", "local")
+os.environ.setdefault("PWM_PUSH_URL", "")  # no real push service from tests
 from collections.abc import Iterator
 
 import pytest

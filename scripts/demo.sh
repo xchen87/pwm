@@ -14,6 +14,7 @@ export PWM_FIXED_NOW="${PWM_FIXED_NOW:-2026-09-12T09:00:00+00:00}"
 export PWM_EXTRACTOR="${PWM_EXTRACTOR:-heuristic}"
 # The server fails closed; the demo is local development and says so.
 export PWM_ENVIRONMENT=local
+export PWM_PUSH_URL=""   # the demo has no phones; briefs go to the in-app inbox
 API_PORT="${API_PORT:-8000}"
 APP_PORT="${APP_PORT:-8081}"
 

@@ -10,7 +10,19 @@ from datetime import date, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    JSON,
+    Date,
+    DateTime,
+    ForeignKey,
+    Identity,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -249,6 +261,8 @@ class Notification(Base):
     channel: Mapped[str] = mapped_column(String(16))
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Insertion order, for "newest first" when timestamps tie (a pinned demo clock does that).
+    sequence: Mapped[int] = mapped_column(Integer, Identity(), unique=True)
 
 
 class ProductEvent(Base):
@@ -282,6 +296,8 @@ class Connection(Base):
     status: Mapped[str] = mapped_column(String(24), default="ok")
     # Exception class name only, never provider text.
     last_error: Mapped[str | None] = mapped_column(String(64))
+    # Pages read so far in a multi-page first read; 0 once caught up.
+    pages_synced: Mapped[int] = mapped_column(default=0)
 
 
 class OAuthToken(Base):
@@ -335,3 +351,18 @@ class AuthSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Device(Base):
+    """A phone that can receive push. The token is Expo's; it addresses the device, not the
+    person, and is dropped the moment Expo reports it dead."""
+
+    __tablename__ = "devices"
+    __table_args__ = (UniqueConstraint("user_id", "push_token"),)
+
+    id: Mapped[UUID] = _id()
+    user_id: Mapped[UUID] = _user()
+    push_token: Mapped[str] = mapped_column(String(200))
+    platform: Mapped[str] = mapped_column(String(16))
+    registered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

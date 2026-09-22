@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     google_userinfo_url: str = "https://openidconnect.googleapis.com/v1/userinfo"
     google_api_url: str = "https://www.googleapis.com"
     backfill_days: int = 90
+
+    # Phone delivery. Push is on when a URL is set (Expo's by default needs no key for the
+    # volumes of an MVP). The app-link identities come from the store accounts (Slice 5).
+    push_url: str | None = "https://exp.host/--/api/v2/push/send"
+    apple_app_id: str | None = None  # "<TEAM_ID>.<bundle id>"
+    android_package: str | None = None
+    android_cert_fingerprints: list[str] = []
     # How often `pwm.cli tick` asks each connection for what is new.
     sync_minutes: int = 15
 
