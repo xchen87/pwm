@@ -46,6 +46,24 @@
               "type": "string",
               "title": "Challenge"
             }
+          },
+          {
+            "name": "terms_version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terms Version"
+            }
+          },
+          {
+            "name": "age_confirmed",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "boolean",
+              "title": "Age Confirmed"
+            }
           }
         ],
         "responses": {
@@ -188,6 +206,63 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/consent": {
+      "post": {
+        "summary": "Accept Terms",
+        "description": "Accept changed terms from inside the app. The only thing a stale account may do\nbesides read the terms, export its data, sign out or delete itself.",
+        "operationId": "accept_terms_auth_consent_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsentIn"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2567,6 +2642,25 @@
         ],
         "title": "ConnectionsView"
       },
+      "ConsentIn": {
+        "properties": {
+          "terms_version": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Terms Version"
+          },
+          "age_confirmed": {
+            "type": "boolean",
+            "title": "Age Confirmed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "terms_version",
+          "age_confirmed"
+        ],
+        "title": "ConsentIn"
+      },
       "Correction": {
         "properties": {
           "what": {
@@ -2838,23 +2932,12 @@
             "maxLength": 200,
             "minLength": 32,
             "title": "Verifier"
-          },
-          "terms_version": {
-            "type": "string",
-            "maxLength": 32,
-            "title": "Terms Version"
-          },
-          "age_confirmed": {
-            "type": "boolean",
-            "title": "Age Confirmed"
           }
         },
         "type": "object",
         "required": [
           "code",
-          "verifier",
-          "terms_version",
-          "age_confirmed"
+          "verifier"
         ],
         "title": "LoginCodeIn"
       },
@@ -2882,6 +2965,17 @@
           "terms_current": {
             "type": "boolean",
             "title": "Terms Current"
+          },
+          "terms_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Version"
           }
         },
         "type": "object",
@@ -2889,7 +2983,8 @@
           "email",
           "name",
           "signed_in_with_google",
-          "terms_current"
+          "terms_current",
+          "terms_version"
         ],
         "title": "Me"
       },

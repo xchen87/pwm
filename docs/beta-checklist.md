@@ -10,14 +10,15 @@ What must be true before real people connect real accounts. Engineering items li
 - [ ] First real sign-in and sync run and observed (Slice 4 has only ever met a stand-in)
 
 ## Legal
-- [ ] Privacy Policy and Terms reviewed by a lawyer; placeholders filled (`PWM_LEGAL_*` settings)
+- [ ] Privacy Policy and Terms reviewed by a lawyer; placeholders filled (`PWM_LEGAL_*` settings) — the public "draft" banner disappears only when every placeholder is filled
+- [ ] Every statement in the policy that describes an operational practice (access restrictions, breach process, backups, DPAs, ZDR) made true before the URL is submitted to Google
 - [ ] Sub-processor list confirmed; DPAs signed (hosting, Anthropic incl. zero retention, Expo)
 - [ ] DPIA completed (`docs/legal/dpia-outline.md`), legitimate-interest assessment for third-party data
 - [ ] Jurisdiction decisions: governing law, EU/UK representative if needed, US state-law thresholds checked
 - [ ] Backup retention period set and stated in the policy
 
 ## Product
-- [x] Age attestation and terms acceptance at sign-up, re-asked when the terms change
+- [x] Age attestation and terms acceptance before sign-in starts; a changed version blocks the account until accepted in-app
 - [x] Data export
 - [x] Disconnect-and-delete; delete everything, with revocation at Google
 - [x] Source inspection for every claim; confirmed vs unconfirmed always visible

@@ -330,6 +330,8 @@ class OAuthState(Base):
     code_verifier: Mapped[str] = mapped_column(String(128))
     app_redirect: Mapped[str] = mapped_column(String(300))
     app_challenge: Mapped[str] = mapped_column(String(64))
+    # Accepted before the browser ever leaves for Google: nothing is read without it.
+    terms_version: Mapped[str] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

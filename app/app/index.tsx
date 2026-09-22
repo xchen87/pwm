@@ -29,6 +29,7 @@ export default function YourWorld() {
   const [connections, setConnections] = useState<ConnectionsView | null>(null);
   // null: signed in (or not yet known). Otherwise: signed out, and whether Google is on offer.
   const [signedOut, setSignedOut] = useState<AuthConfig | null>(null);
+  const [staleTerms, setStaleTerms] = useState<AuthConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -38,14 +39,22 @@ export default function YourWorld() {
       setConnections(current);
       if (current.connected.length > 0 || current.understood > 0) setHome(await getHome());
       setSignedOut(null);
+      setStaleTerms(null);
       setError(null);
     } catch (problem) {
+      if (problem instanceof ApiError && problem.status === 403 && problem.message === 'terms_outdated') {
+        const config = await getAuthConfig().catch(() => null);
+        if (config) setStaleTerms(config);
+        return;
+      }
       if (problem instanceof ApiError && problem.status === 401) {
         // No session, or it ended. This screen must not depend on anything that needs one.
         const config = await getAuthConfig().catch(() => null);
-        setSignedOut(
-          config ?? { google: false, dev_login: false, terms_version: '', minimum_age: 16, privacy_url: '', terms_url: '' },
-        );
+        if (!config) {
+          setError('Can’t reach your world right now. Pull down to try again.');
+          return;
+        }
+        setSignedOut(config);
         return;
       }
       setError('Can’t reach your world right now. Pull down to try again.');
@@ -60,6 +69,7 @@ export default function YourWorld() {
     }, [load]),
   );
 
+  if (staleTerms) return <SignedOut config={staleTerms} onSignedIn={load} reaccept />;
   if (signedOut) return <SignedOut config={signedOut} onSignedIn={load} />;
 
   // Onboarding is for an empty world. With nothing connected but notes (or anything else)

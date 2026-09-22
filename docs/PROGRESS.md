@@ -24,7 +24,7 @@ Working constraint (founder, 2026-09-21): reach a showable, demo-ready MVP **wit
 | Slice 3 — Ask Your World + Remember / Correct / Forget | done; independently reviewed, findings fixed | same |
 | Demo readiness — onboarding, connections/disconnect/delete, same-person confirmation, demo launcher and script, in-browser checks | done; independently reviewed, findings fixed | commit `926d450` + next; verify green (122 tests, 87 functional checks incl. the built app in headless Chrome) |
 | Slice 4 — accounts, real Gmail/Calendar | **built against a stand-in for Google; unverified against Google itself**; two independent reviews, findings fixed; merged | `master`; verify green |
-| Beta readiness — consent, legal pages, export, DPIA outline, checklist | built; legal texts are **drafts for a lawyer**; independent review in progress | `master`; verify green |
+| Beta readiness — consent, legal pages, export, DPIA outline, checklist | built; independently reviewed, findings fixed; legal texts are **drafts for a lawyer** | `master`; verify green |
 | Slice 5 — phone delivery | push, device registration, deep links, app lock, app-link plumbing and store config **built and tested against a stand-in for Expo**; independently reviewed, findings fixed. **Never run on a phone**: builds, push tokens and app links need the founder's Expo / Apple / Google identities | `master`; verify green |
 | Live LLM evaluation | blocked: **needs founder** (API key + spend approval) | |
 
@@ -280,4 +280,25 @@ Also found by the gate, not the reviewer: a patch had written a literal `\n` int
 
 **Beta readiness.** Founder asked what compliance shipping needs, then asked for the pieces. Built: age attestation and terms acceptance at sign-in, recorded on the account and re-asked when the terms version changes (D75); the privacy policy, terms and sub-processor list as drafts in `docs/legal`, served publicly at `/legal/*` with company details from settings (D76); a one-time-link data export of everything an account holds (D77); a DPIA outline and a beta checklist (`docs/beta-checklist.md`) that separates what is built from what only the founder or a lawyer can do. The app gained the consent step, legal links and an export button.
 - Not built, listed in the checklist: body retention window; Gmail deletion propagation; rate limiting; the legal review itself.
-- `scripts/verify.sh`: **ALL GREEN** — 309 backend/eval tests, 8 app tests, 152 functional checks (the browser sign-in now passes through the consent step).
+- `scripts/verify.sh`: **ALL GREEN** — 309 backend/eval tests, 8 app tests, 152 functional checks. (The claim made here at the time, that the browser sign-in passed through the consent step, was wrong: it went through the development-user onboarding screen. Corrected below.)
+
+**Beta-readiness independent review.** An eighth reviewer, with a privacy lens, examined `a39a326..05937e1`. 12 findings (1 high) and a list of statements in the legal texts the code could not back. Dispositions:
+
+| # | Sev | Finding | Disposition |
+|---|---|---|---|
+| 1 | high | **Mail was read, stored and processed before consent was recorded.** Consent was captured when the login code was redeemed; the refresh token was stored and syncs queued at Google's callback, earlier. A person who then declined (or a minor who said so) had already had their mailbox read | **Fixed.** Consent is a condition of *starting* sign-in (`/auth/google/start` requires the current terms version and the age attestation, stored on the attempt) and is recorded in the callback before the token is stored or anything queued. The worker also refuses to sync an account whose terms are not current. Test reproduces the original ordering. |
+| 2 | med | Reconnect and onboarding sent the *current* terms version with nothing shown, so a changed version was "accepted" silently; `terms_current` was used nowhere; stale accounts kept working | **Fixed.** A stale account gets 403 `terms_outdated` on everything except seeing the terms, accepting them (`POST /auth/consent`), exporting, signing out and deleting; the app shows the consent screen in "the terms have changed" mode; reconnect sends the version last accepted, which the server refuses if stale. Tests. |
+| 3 | med | The browser test never saw the consent screen: with the development identity on, the page shown was Onboarding, which shares the button text. PROGRESS.md claimed otherwise | **Fixed.** The browser step now restarts the API with dev login off, so a real signed-out person is what the browser meets: it asserts the consent screen appears, the Google button is disabled before both boxes are ticked, the boxes expose their state, and sign-in then completes. The false claim above is corrected. |
+| 4 | low | Export code not single-use under concurrency | **Fixed** (`DELETE … RETURNING`; race test with six threads). |
+| 5 | low | Export omitted stage results, model calls, sessions, people ids | **Fixed.** Policy wording changed from "everything" to "the data we hold". |
+| 6 | low | Attestation is client-asserted | Accepted: an attestation is what the law asks for; its ordering (finding 1) is the real record. |
+| 7 | low | Markdown renderer mishandles numbered lists and list/table adjacency | **Fixed** for those; a real markdown library is still not justified for three documents. |
+| 8 | low | Export link opened asynchronously may be popup-blocked with no fallback | **Fixed** (link shown as text too). |
+| 9 | low | One malformed stored record could fail a whole export | **Fixed** (given as stored, with a note). |
+| 10 | low | No audit trace of an export | **Fixed** (`export_requested`, `export_downloaded` events). |
+| 11 | low | Checkbox state not exposed on web | **Fixed** (`aria-checked`; asserted in the browser test). |
+| 12 | low | Misleading "not set up" when the API is unreachable; public "draft" banner | **Fixed.** Unreachable now says so; the banner removes itself only once every placeholder is filled. |
+
+Legal texts: every statement the reviewer listed as unbacked was rewritten to what is true today (DPAs and zero retention as *conditions* we enforce before enabling a provider; revocation at the last Google source; encryption with the excerpts stated as stored in the clear; legal basis for the user's own data; cookies/local storage, automated decisions, breach notification, and in-app re-acceptance sections added). Operational claims that cannot be true in a repository (access restrictions, backups) are now on the checklist as things to make true before the URL goes to Google.
+
+- `scripts/verify.sh`: **ALL GREEN** — 310 backend/eval tests, 8 app tests, 155 functional checks.

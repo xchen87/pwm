@@ -13,25 +13,29 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from pwm import clock, crypto
 from pwm.api.deps import CurrentUser, DbSession
+from pwm.brief.service import record_event
 from pwm.config import get_settings
 from pwm.db.models import (
     Assertion,
     AssertionRelation,
+    AuthSession,
     Brief,
     Connection,
     Device,
     ExportCode,
+    ModelCall,
     Notification,
     Person,
     ProductEvent,
     ReviewEvent,
     Source,
+    StageResult,
     User,
 )
 from pwm.pipeline.store import open_record
@@ -56,6 +60,7 @@ def request_export(session: DbSession, user: CurrentUser) -> ExportTicket:
     code = secrets.token_urlsafe(32)
     lifetime = timedelta(minutes=settings.export_code_minutes)
     session.add(ExportCode(code_hash=_hash(code), user_id=user.id, expires_at=now + lifetime))
+    record_event(session, user, "export_requested")  # a full download is worth a trace
     session.commit()
     return ExportTicket(
         url=f"{settings.public_url.rstrip('/')}/me/export/{code}",
@@ -74,6 +79,8 @@ def build_export(session: Session, user: User) -> dict[str, Any]:
         except (crypto.DataKeyMissing, crypto.Undecryptable):
             record["body"] = None
             record["body_unavailable"] = "encrypted under a key this server no longer holds"
+        except ValidationError:
+            record["record_note"] = "stored in an older form; given as stored"
         return {"id": str(s.id), "connector": s.connector, **record}
 
     def assertion(a: Assertion) -> dict[str, Any]:
@@ -99,6 +106,7 @@ def build_export(session: Session, user: User) -> dict[str, Any]:
             "terms_version": user.terms_version,
             "terms_accepted_at": user.terms_accepted_at,
             "age_attested_at": user.age_attested_at,
+            "last_seen_at": user.last_seen_at,
         },  # fmt: skip
         "connections": [
             {
@@ -118,10 +126,36 @@ def build_export(session: Session, user: User) -> dict[str, Any]:
         ],
         "people": [
             {
+                "id": str(p.id),
                 "name": p.display_name,
                 "addresses": [{"address": i.value, "link": i.link} for i in p.identifiers],
             }
             for p in rows(Person, Person.display_name)
+        ],
+        # What the reading stages concluded about each source, and what each call cost.
+        "stage_results": [
+            {
+                "source_id": str(r.source_id),
+                "stage": r.stage,
+                "version": r.version,
+                "result": r.result,
+            }
+            for r in rows(StageResult, StageResult.created_at)
+        ],
+        "model_calls": [
+            {
+                "source_id": str(c.source_id) if c.source_id else None,
+                "stage": c.stage,
+                "model": c.model,
+                "input_tokens": c.input_tokens,
+                "output_tokens": c.output_tokens,
+                "at": c.created_at,
+            }
+            for c in rows(ModelCall, ModelCall.created_at)
+        ],
+        "sessions": [
+            {"created_at": s.created_at, "expires_at": s.expires_at, "revoked_at": s.revoked_at}
+            for s in rows(AuthSession, AuthSession.created_at)
         ],
         "reviews": [
             {
@@ -133,7 +167,13 @@ def build_export(session: Session, user: User) -> dict[str, Any]:
             for e in rows(ReviewEvent, ReviewEvent.created_at)
         ],
         "briefs": [
-            {"id": str(b.id), "period": b.period, "created_at": b.created_at, "items": b.items}
+            {
+                "id": str(b.id),
+                "period": b.period,
+                "covers_since": b.covers_since,
+                "created_at": b.created_at,
+                "items": b.items,
+            }
             for b in rows(Brief, Brief.created_at)
         ],
         "notifications": [
@@ -163,15 +203,20 @@ def build_export(session: Session, user: User) -> dict[str, Any]:
 
 @router.get("/me/export/{code}")
 def download_export(code: str, session: DbSession) -> JSONResponse:
-    row = session.get(ExportCode, _hash(code))
-    if row is not None:
-        session.delete(row)
-        session.commit()
-    if row is None or row.expires_at < clock.now():
+    # DELETE ... RETURNING: exactly one request can ever win the row, however many race for it.
+    spent = session.execute(
+        delete(ExportCode)
+        .where(ExportCode.code_hash == _hash(code))
+        .returning(ExportCode.user_id, ExportCode.expires_at)
+    ).first()
+    session.commit()
+    if spent is None or spent.expires_at < clock.now():
         raise HTTPException(404, "this export link is not valid; ask for a new one in the app")
-    user = session.get(User, row.user_id)
+    user = session.get(User, spent.user_id)
     if user is None:
         raise HTTPException(404, "this export link is not valid; ask for a new one in the app")
+    record_event(session, user, "export_downloaded")
+    session.commit()
     payload = build_export(session, user)
     from fastapi.encoders import jsonable_encoder
 

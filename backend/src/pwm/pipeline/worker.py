@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pwm.config import get_settings
 from pwm.db.models import Job, User
 from pwm.extraction.interface import Extractor, Triager
 from pwm.pipeline.store import StageCache, process_user
@@ -32,7 +33,9 @@ def run_next(session: Session, triager: Triager, extractor: Extractor) -> bool:
     caches: list[StageCache] = []
     try:
         with session.begin_nested():
-            if job.kind == "sync":
+            if job.kind == "sync" and user.terms_version != get_settings().terms_version:
+                pass  # nothing is read for an account that has not agreed to the current terms
+            elif job.kind == "sync":
                 # Imported here: connectors depend on the store, not the other way round.
                 from pwm.connectors.service import build_connector, sync
 

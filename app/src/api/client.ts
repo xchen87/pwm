@@ -87,13 +87,10 @@ export const confirmSamePerson = (identifierId: string) =>
 export const markDifferentPerson = (identifierId: string, name: string) =>
   request<unknown>('POST', `/people/identifiers/${identifierId}/split`, { name });
 
-export const exchangeLoginCode = (code: string, verifier: string, termsVersion: string) =>
-  request<SessionOut>('POST', '/auth/session', {
-    code,
-    verifier,
-    terms_version: termsVersion,
-    age_confirmed: true, // sign-in cannot start without the attestation (src/signIn.ts)
-  });
+export const exchangeLoginCode = (code: string, verifier: string) =>
+  request<SessionOut>('POST', '/auth/session', { code, verifier });
+export const acceptTerms = (termsVersion: string) =>
+  request<Me>('POST', '/auth/consent', { terms_version: termsVersion, age_confirmed: true });
 export const requestExport = () => request<ExportTicket>('POST', '/me/export');
 export const getAuthConfig = () => request<AuthConfig>('GET', '/auth/config');
 export const getMe = () => request<Me>('GET', '/auth/me');

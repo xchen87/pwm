@@ -176,14 +176,28 @@ export default function Settings() {
         onPress={() =>
           requestExport().then(
             (ticket) => {
-              setExported(`Your download link works once and for ${Math.round(ticket.expires_in_seconds / 60)} minutes.`);
+              setExported(ticket.url); // shown as a link too: a browser may block the automatic open
               void Linking.openURL(ticket.url);
             },
             () => setExported('That didn’t work. Try again.'),
           )
         }
       />
-      {exported && <Text style={styles.muted}>{exported}</Text>}
+      {exported && (
+        <Text style={styles.muted}>
+          {exported.startsWith('http') ? (
+            <>
+              Your download link works once, for a few minutes:{' '}
+              <Text style={styles.link} onPress={() => Linking.openURL(exported)}>
+                open it
+              </Text>
+              .
+            </>
+          ) : (
+            exported
+          )}
+        </Text>
+      )}
       {legal && (
         <Text style={styles.muted}>
           <Text style={styles.link} onPress={() => Linking.openURL(legal.privacy_url)}>

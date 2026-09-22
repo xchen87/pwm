@@ -116,7 +116,13 @@ def rendered(chrome: str, url: str) -> str:
     return done.stdout
 
 
-def app_in_a_browser(api: Api, static_port: int) -> None:
+def app_in_a_browser(
+    api: Api,
+    static_port: int,
+    server_env: dict[str, str],
+    server: subprocess.Popen[bytes],
+    port: int,
+) -> None:
     """Build the real web app against this server and look at what a person would see.
 
     `--clear` matters: Metro caches transformed files with EXPO_PUBLIC_* values inlined, so
@@ -152,38 +158,6 @@ def app_in_a_browser(api: Api, static_port: int) -> None:
             "Connect your life" in rendered(chrome, page),
             "a new user sees onboarding in the browser",
         )
-
-        # A real browser clicks "Continue with Google" and is carried through the stand-in
-        # for Google and back, redeeming the login code with the secret it kept.
-        with tempfile.TemporaryDirectory() as profile:
-            driven = subprocess.run(
-                ["node", str(ROOT / "scripts/signin_e2e.mjs"), page, chrome, profile],
-                capture_output=True, text=True, timeout=240, check=False,
-            )  # fmt: skip
-        outcome = (
-            json.loads(driven.stdout.strip().splitlines()[-1]) if driven.stdout.strip() else {}
-        )
-        check(
-            outcome.get("clicked") is True, "in a browser: the Google button is there and clickable"
-        )
-        check(
-            outcome.get("signedIn") is True,
-            "in a browser: sign-in completes and returns to the app",
-        )
-        check(
-            outcome.get("verifierCleared") is True,
-            "in a browser: the sign-in secret is used once and removed",
-        )
-        check(
-            outcome.get("tokenNotInUrl") is True,
-            "in a browser: the session token never appears in a URL",
-        )
-        check(
-            outcome.get("accountShown") is True,
-            "in a browser: Settings shows the signed-in Google account",
-        )
-
-        api.call("DELETE", "/me")
         api.post("/connections/demo")
         home = rendered(chrome, page)
         check(
@@ -192,6 +166,67 @@ def app_in_a_browser(api: Api, static_port: int) -> None:
         )
         check("$19,950" in home, "the home screen shows a real change with a readable amount")
         check("It looks like" in home, "unconfirmed changes are hedged on screen")
+
+        # Now with no development identity: what a real person meets. A real browser must
+        # tick both consent boxes before "Continue with Google" will do anything, then pass
+        # through the stand-in for Google and back, redeeming the code with its kept secret.
+        server.terminate()
+        server.wait(timeout=10)
+        strict = subprocess.Popen(
+            ["uv", "run", "uvicorn", "pwm.api.main:app", "--port", str(port), "--log-level", "warning"],
+            cwd=ROOT, env={**server_env, "PWM_DEV_LOGIN": "false"},
+        )  # fmt: skip
+        try:
+            for _ in range(60):
+                try:
+                    urllib.request.urlopen(api.base + "/auth/config", timeout=1)
+                    break
+                except OSError:
+                    time.sleep(0.5)
+            with tempfile.TemporaryDirectory() as profile:
+                driven = subprocess.run(
+                    ["node", str(ROOT / "scripts/signin_e2e.mjs"), page, chrome, profile],
+                    capture_output=True, text=True, timeout=240, check=False,
+                )  # fmt: skip
+            outcome = (
+                json.loads(driven.stdout.strip().splitlines()[-1]) if driven.stdout.strip() else {}
+            )
+            check(
+                outcome.get("consentShown") is True,
+                "in a browser: a signed-out person sees the consent screen",
+            )
+            check(
+                outcome.get("disabledBeforeConsent") is True,
+                "in a browser: Google is disabled until both boxes are ticked",
+            )
+            check(
+                outcome.get("checkedExposed") is True,
+                "in a browser: ticked boxes are exposed to assistive technology",
+            )
+            check(
+                outcome.get("clicked") is True,
+                "in a browser: the Google button is enabled after consent",
+            )
+            check(
+                outcome.get("signedIn") is True,
+                "in a browser: sign-in completes and returns to the app",
+            )
+            check(
+                outcome.get("verifierCleared") is True,
+                "in a browser: the sign-in secret is used once and removed",
+            )
+            check(
+                outcome.get("tokenNotInUrl") is True,
+                "in a browser: the session token never appears in a URL",
+            )
+            check(
+                outcome.get("accountShown") is True,
+                "in a browser: Settings shows the signed-in Google account",
+            )
+        finally:
+            if strict.poll() is None:
+                strict.terminate()
+                strict.wait(timeout=10)
     finally:
         static.terminate()
         static.wait(timeout=10)
@@ -245,11 +280,12 @@ def main() -> None:
         else:
             sys.exit("server did not start")
         journeys(api)
-        app_in_a_browser(api, static_port)
+        app_in_a_browser(api, static_port, server_env, server, port)
     finally:
         for process in (server, fake_google):
-            process.terminate()
-            process.wait(timeout=10)
+            if process.poll() is None:
+                process.terminate()
+                process.wait(timeout=10)
     print(f"functional: {len(CHECKS)} checks passed")
 
 

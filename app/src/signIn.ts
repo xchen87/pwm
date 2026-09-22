@@ -4,37 +4,20 @@ import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
 
-import { API_URL, exchangeLoginCode, getAuthConfig } from './api/client';
+import { API_URL, exchangeLoginCode, getMe } from './api/client';
 import { enablePush } from './push';
 import { setToken } from './session';
 
 const VERIFIER_KEY = 'pwm.signin.verifier';
-const CONSENT_KEY = 'pwm.signin.consent'; // the terms version the person accepted before starting
 
 /** Where Google's sign-in should send the browser back to: this app, on this platform. */
 export const appRedirect = () => Linking.createURL('auth');
 
 const hex = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 
-async function keep(verifier: string, termsVersion: string): Promise<void> {
-  if (Platform.OS === 'web') {
-    globalThis.sessionStorage?.setItem(VERIFIER_KEY, verifier);
-    globalThis.sessionStorage?.setItem(CONSENT_KEY, termsVersion);
-  } else {
-    await SecureStore.setItemAsync(VERIFIER_KEY, verifier);
-    await SecureStore.setItemAsync(CONSENT_KEY, termsVersion);
-  }
-}
-
-async function takeConsent(): Promise<string | null> {
-  if (Platform.OS === 'web') {
-    const version = globalThis.sessionStorage?.getItem(CONSENT_KEY) ?? null;
-    globalThis.sessionStorage?.removeItem(CONSENT_KEY);
-    return version;
-  }
-  const version = await SecureStore.getItemAsync(CONSENT_KEY);
-  await SecureStore.deleteItemAsync(CONSENT_KEY);
-  return version;
+async function keep(verifier: string): Promise<void> {
+  if (Platform.OS === 'web') globalThis.sessionStorage?.setItem(VERIFIER_KEY, verifier);
+  else await SecureStore.setItemAsync(VERIFIER_KEY, verifier);
 }
 
 async function takeVerifier(): Promise<string | null> {
@@ -63,9 +46,8 @@ export function finishSignIn(code: string): Promise<void> {
   if (!pending) {
     pending = (async () => {
       const verifier = await takeVerifier();
-      const termsVersion = await takeConsent();
-      if (!verifier || !termsVersion) throw new Error('This sign-in was not started here.');
-      const session = await exchangeLoginCode(code, verifier, termsVersion);
+      if (!verifier) throw new Error('This sign-in was not started here.');
+      const session = await exchangeLoginCode(code, verifier);
       await setToken(session.token);
       // If this phone already allows notifications, it should hear about briefs from now on.
       void enablePush(false).catch(() => undefined);
@@ -81,24 +63,33 @@ export function finishSignIn(code: string): Promise<void> {
  * Returns true when signed in. On the web the page navigates away instead, and the
  * /auth route finishes the job when Google sends the browser back.
  */
-export type Consent = { termsVersion: string; ageConfirmed: true };
+/** What the person ticked before starting. Sent with the start of sign-in, so it is on
+ * record before anything is read (the server refuses to start without it). */
+export type Consent = { termsVersion: string; ageConfirmed: boolean };
 
 /** For a person who already has an account here (reconnecting Google after the grant ended,
- * or the local development identity linking its Google account): they accepted the current
- * terms when they signed up, and the server checks that again at redemption. */
+ * or the local development identity linking its Google account). They can only be here with
+ * the current terms accepted: a stale account is stopped at the consent screen first, so
+ * the version they last accepted is the current one. */
 export async function reconnectGoogle(): Promise<boolean> {
-  const config = await getAuthConfig();
-  return signInWithGoogle({ termsVersion: config.terms_version, ageConfirmed: true });
+  const me = await getMe();
+  if (!me.terms_current || !me.terms_version) throw new Error('Please accept the current terms first.');
+  return signInWithGoogle({ termsVersion: me.terms_version, ageConfirmed: true });
 }
 
 export async function signInWithGoogle(consent: Consent): Promise<boolean> {
   const verifier = hex(await Crypto.getRandomBytesAsync(32));
   const challenge = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, verifier);
-  await keep(verifier, consent.termsVersion);
+  await keep(verifier);
 
   const redirect = appRedirect();
-  const start =
-    `${API_URL}/auth/google/start?redirect=${encodeURIComponent(redirect)}` + `&challenge=${challenge}`;
+  const query = new URLSearchParams({
+    redirect,
+    challenge,
+    terms_version: consent.termsVersion,
+    age_confirmed: String(consent.ageConfirmed),
+  });
+  const start = `${API_URL}/auth/google/start?${query}`;
   if (Platform.OS === 'web') {
     globalThis.location.assign(start);
     return false;

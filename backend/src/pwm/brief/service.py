@@ -83,6 +83,7 @@ def written_items(brief: Brief) -> list[WrittenItem]:
 EVENT_NAMES = {
     "brief_opened", "item_useful", "item_not_useful", "item_dismissed", "item_corrected",
     "item_acted", "notification_opened", "source_inspected", "question_asked",
+    "export_requested", "export_downloaded",
 }  # fmt: skip
 
 

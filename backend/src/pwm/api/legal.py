@@ -44,11 +44,19 @@ def placeholders(settings: Settings) -> dict[str, str]:
     }
 
 
+DRAFT_BANNER = "**Draft for legal review. Not yet in force.**"
+
+
 def render(markdown: str, values: dict[str, str]) -> str:
     text = re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m.group(1), m.group(0)), markdown)
+    # The banner is not something to forget to remove: it disappears by itself once every
+    # placeholder has been filled in, and not before.
+    if "{{" not in text:
+        text = text.replace(DRAFT_BANNER, "")
     out: list[str] = []
     paragraph: list[str] = []
-    in_list = in_table = False
+    in_list: str | bool = False
+    in_table = False
 
     def inline(line: str) -> str:
         line = html.escape(line)
@@ -61,7 +69,7 @@ def render(markdown: str, values: dict[str, str]) -> str:
             out.append(f"<p>{' '.join(inline(line) for line in paragraph)}</p>")
             paragraph.clear()
         if in_list:
-            out.append("</ul>")
+            out.append(f"</{in_list}>")
             in_list = False
         if in_table:
             out.append("</table>")
@@ -75,19 +83,20 @@ def render(markdown: str, values: dict[str, str]) -> str:
             flush()
             level = len(stripped) - len(stripped.lstrip("#"))
             out.append(f"<h{level}>{inline(stripped.lstrip('#').strip())}</h{level}>")
-        elif stripped.startswith("- "):
-            if paragraph:
+        elif stripped.startswith("- ") or re.match(r"\d+\. ", stripped):
+            ordered = not stripped.startswith("- ")
+            if paragraph or in_table:
                 flush()
             if not in_list:
-                out.append("<ul>")
-                in_list = True
-            out.append(f"<li>{inline(stripped[2:])}</li>")
+                out.append("<ol>" if ordered else "<ul>")
+                in_list = "ol" if ordered else "ul"
+            out.append(f"<li>{inline(re.sub(r'^(- |\d+\. )', '', stripped))}</li>")
         elif stripped.startswith("|"):
             cells = [c.strip() for c in stripped.strip("|").split("|")]
             if all(set(c) <= set("-: ") for c in cells):
                 continue
             if not in_table:
-                if paragraph:
+                if paragraph or in_list:
                     flush()
                 out.append("<table>")
                 in_table = True
@@ -95,6 +104,8 @@ def render(markdown: str, values: dict[str, str]) -> str:
             else:
                 out.append("<tr>" + "".join(f"<td>{inline(c)}</td>" for c in cells) + "</tr>")
         else:
+            if in_table or in_list:
+                flush()
             paragraph.append(stripped)
     flush()
     return "\n".join(out)

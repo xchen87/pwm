@@ -9,6 +9,10 @@ The flow, for a phone or a browser alike:
 5. The app exchanges that code for a session token over a direct request, presenting a
    secret whose hash it supplied in step 1.
 
+Consent (current terms accepted, age attested) is given in step 1 and recorded in step 3,
+before the refresh token is stored or any reading is queued: no mail is touched for an
+account that has not agreed.
+
 So the session token never appears in a URL, a browser history, or a redirect log;
 Google's tokens never leave the server at all; and the code in the redirect is useless to
 anyone but the app instance that started the sign-in. That last point is what stops both
@@ -70,13 +74,19 @@ def allowed_redirect(settings: Settings, target: str) -> bool:
     return settings.is_local and wanted.scheme == "exp" and wanted.path.endswith("/--/auth")
 
 
-def start(session: Session, settings: Settings, app_redirect: str, app_challenge: str) -> str:
+def start(
+    session: Session, settings: Settings, app_redirect: str, app_challenge: str, consent: "Consent"
+) -> str:
+    """Begin sign-in. Consent is a condition of starting, not of finishing: the first thing
+    that happens with a person's mail happens after Google's callback, and by then the
+    acceptance is already on record with this attempt."""
     if not settings.google_configured:
         raise AuthError("Google sign-in is not configured")
     if not allowed_redirect(settings, app_redirect):
         raise AuthError("that redirect address is not allowed")
     if not _CHALLENGE.fullmatch(app_challenge):
         raise AuthError("a sign-in challenge is required")
+    check_consent(settings, consent)
     now = clock.now()
     session.execute(delete(OAuthState).where(OAuthState.created_at < now - STATE_LIFETIME))
     session.execute(delete(LoginCode).where(LoginCode.expires_at < now))
@@ -88,6 +98,7 @@ def start(session: Session, settings: Settings, app_redirect: str, app_challenge
             code_verifier=verifier,
             app_redirect=app_redirect,
             app_challenge=app_challenge,
+            terms_version=consent.terms_version,
             created_at=now,
         )  # fmt: skip
     )
@@ -126,6 +137,9 @@ def finish(
         raise AuthError("Google did not confirm this account's email address")
 
     user = _user_for_google(session, str(info["sub"]), str(info["email"]).lower(), info.get("name"))
+    # Before the token is stored and before any sync is queued: the terms accepted at the
+    # start of this attempt must still be the current ones.
+    record_consent(session, settings, user, Consent(pending.terms_version, True))
 
     refresh_token = granted.get("refresh_token")
     stored = session.scalar(
@@ -191,19 +205,22 @@ def _user_for_google(session: Session, sub: str, email: str, name: str | None) -
 
 
 class Consent:
-    """What the person agreed to when finishing sign-in."""
+    """What the person agreed to before sign-in started."""
 
     def __init__(self, terms_version: str, age_confirmed: bool) -> None:
         self.terms_version, self.age_confirmed = terms_version, age_confirmed
 
 
-def record_consent(session: Session, settings: Settings, user: User, consent: Consent) -> None:
-    """Sign-in completes only with the current terms accepted and age attested. Recorded once
-    per version; asked again whenever the terms change."""
+def check_consent(settings: Settings, consent: Consent) -> None:
     if consent.terms_version != settings.terms_version:
         raise AuthError("please accept the current terms to continue")
     if not consent.age_confirmed:
         raise AuthError(f"you must be at least {settings.minimum_age} to use this")
+
+
+def record_consent(session: Session, settings: Settings, user: User, consent: Consent) -> None:
+    """Recorded once per version; asked again whenever the terms change."""
+    check_consent(settings, consent)
     now = clock.now()
     if user.terms_version != settings.terms_version:
         user.terms_version, user.terms_accepted_at = settings.terms_version, now
@@ -211,9 +228,11 @@ def record_consent(session: Session, settings: Settings, user: User, consent: Co
         user.age_attested_at = now
 
 
-def redeem(
-    session: Session, settings: Settings, login_code: str, verifier: str, consent: Consent
-) -> str:
+def terms_current(settings: Settings, user: User) -> bool:
+    return user.terms_version == settings.terms_version
+
+
+def redeem(session: Session, settings: Settings, login_code: str, verifier: str) -> str:
     """Exchange a login code for a session token.
 
     The code works once, and only for whoever can show the secret whose hash was given when
@@ -229,7 +248,6 @@ def redeem(
         row.app_challenge, _hash(verifier)
     ):
         raise AuthError("that sign-in code is not valid")
-    record_consent(session, settings, session.get_one(User, row.user_id), consent)
     token = secrets.token_urlsafe(48)
     session.add(
         AuthSession(

@@ -50,10 +50,15 @@ try {
   await send('Page.enable');
   await send('Runtime.enable');
   await send('Page.navigate', { url: appUrl });
+  const button = `[...document.querySelectorAll('[role=button]')].find((e) => e.textContent.includes('Continue with Google'))`;
+  checks.consentShown = await until(`document.querySelectorAll('[role=checkbox]').length === 2 && Boolean(${button})`);
+  checks.disabledBeforeConsent = await evaluate(`(${button})?.getAttribute('aria-disabled') === 'true'`);
+  await evaluate(`document.querySelectorAll('[role=checkbox]').forEach((box) => box.click())`);
+  checks.checkedExposed = await until(`[...document.querySelectorAll('[role=checkbox]')].every((box) => box.getAttribute('aria-checked') === 'true')`);
   checks.clicked = await until(`(() => {
-    const button = [...document.querySelectorAll('[role=button]')].find((e) => e.textContent.includes('Continue with Google'));
-    if (!button) return false;
-    button.click();
+    const target = ${button};
+    if (!target || target.getAttribute('aria-disabled') === 'true') return false;
+    target.click();
     return true;
   })()`);
   checks.signedIn = await until(`Boolean(sessionStorage.getItem('pwm.session')) && location.pathname === '/'`);

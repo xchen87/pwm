@@ -206,8 +206,15 @@ def journey_50_google_sign_in_and_sync(api: Any, check: Any, run: Any) -> None:
 
     verifier = "f" * 64
     challenge = hashlib.sha256(verifier.encode()).hexdigest()
+    terms = api.get("/auth/config")["terms_version"]
+    consent = f"&terms_version={terms}&age_confirmed=true"
+    check(
+        _hop(f"{api.base}/auth/google/start?redirect=pwm%3A%2F%2Fauth&challenge={challenge}")[0]
+        == 422,
+        "sign-in cannot start without consent",
+    )
     status, to_google = _hop(
-        f"{api.base}/auth/google/start?redirect=pwm%3A%2F%2Fauth&challenge={challenge}"
+        f"{api.base}/auth/google/start?redirect=pwm%3A%2F%2Fauth&challenge={challenge}{consent}"
     )
     check(status == 302 and to_google.startswith(api.google), "sign-in sends the browser to Google")
     check(
@@ -227,15 +234,15 @@ def journey_50_google_sign_in_and_sync(api: Any, check: Any, run: Any) -> None:
     check(_hop(to_callback)[0] == 400, "a replayed callback is refused")
     check(
         _hop(
-            f"{api.base}/auth/google/start?redirect=https%3A%2F%2Fevil.example&challenge={challenge}"
+            f"{api.base}/auth/google/start?redirect=https%3A%2F%2Fevil.example"
+            f"&challenge={challenge}{consent}"
         )[0]
         == 400,
         "foreign redirects are refused",
     )
 
     code = parse_qs(urlparse(to_app).query)["code"][0]
-    consent = {"terms_version": api.get("/auth/config")["terms_version"], "age_confirmed": True}
-    session = api.post("/auth/session", {"code": code, "verifier": verifier, **consent})
+    session = api.post("/auth/session", {"code": code, "verifier": verifier})
     api.token = session["token"]
     try:
         check(

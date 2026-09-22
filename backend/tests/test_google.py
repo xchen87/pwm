@@ -81,10 +81,15 @@ CHALLENGE = hashlib.sha256(VERIFIER.encode()).hexdigest()
 CONSENT = {"terms_version": "2026-09-21", "age_confirmed": True}
 
 
-def start(api: TestClient, redirect: str = "pwm://auth", challenge: str = CHALLENGE):  # type: ignore[no-untyped-def]
+def start(  # type: ignore[no-untyped-def]
+    api: TestClient,
+    redirect: str = "pwm://auth",
+    challenge: str = CHALLENGE,
+    consent: dict | None = None,
+):
     return api.get(
         "/auth/google/start",
-        params={"redirect": redirect, "challenge": challenge},
+        params={"redirect": redirect, "challenge": challenge, **(consent or CONSENT)},
         follow_redirects=False,
     )
 
@@ -104,7 +109,7 @@ def login_code(api: TestClient, redirect: str = "pwm://auth", challenge: str = C
 def sign_in(api: TestClient, redirect: str = "pwm://auth") -> str:
     """Walk the browser through the whole flow; returns a session token."""
     granted = api.post(
-        "/auth/session", json={"code": login_code(api, redirect), "verifier": VERIFIER, **CONSENT}
+        "/auth/session", json={"code": login_code(api, redirect), "verifier": VERIFIER}
     )
     assert granted.status_code == 200
     return str(granted.json()["token"])
@@ -131,6 +136,7 @@ def test_sign_in_creates_a_user_a_session_and_an_encrypted_token(
         "name": "Alex Rivera",
         "signed_in_with_google": True,
         "terms_current": True,
+        "terms_version": "2026-09-21",
     }
 
     stored = session.scalars(select(OAuthToken)).one()
@@ -173,14 +179,8 @@ def test_a_login_code_works_once_and_a_state_works_once(api: TestClient, session
         api.get(f"{back.path}?{back.query}", follow_redirects=False).status_code == 400
     )  # replayed callback
     code = parse_qs(urlparse(first.headers["location"]).query)["code"][0]
-    assert (
-        api.post("/auth/session", json={"code": code, "verifier": VERIFIER, **CONSENT}).status_code
-        == 200
-    )
-    assert (
-        api.post("/auth/session", json={"code": code, "verifier": VERIFIER, **CONSENT}).status_code
-        == 400
-    )
+    assert api.post("/auth/session", json={"code": code, "verifier": VERIFIER}).status_code == 200
+    assert api.post("/auth/session", json={"code": code, "verifier": VERIFIER}).status_code == 400
     assert (
         api.get("/auth/google/callback?state=made-up&code=x", follow_redirects=False).status_code
         == 400
@@ -418,15 +418,9 @@ def test_a_login_code_is_useless_without_the_secret_of_the_app_that_started_it(
     """Covers interception (another app receives pwm://auth?code=) and login CSRF (a link
     an attacker sends): in both, the redeemer does not hold the starting app's secret."""
     code = login_code(api)
-    assert (
-        api.post("/auth/session", json={"code": code, "verifier": "w" * 64, **CONSENT}).status_code
-        == 400
-    )
+    assert api.post("/auth/session", json={"code": code, "verifier": "w" * 64}).status_code == 400
     # ...and the attempt burned the code, so the thief cannot retry, nor can anyone else.
-    assert (
-        api.post("/auth/session", json={"code": code, "verifier": VERIFIER, **CONSENT}).status_code
-        == 400
-    )
+    assert api.post("/auth/session", json={"code": code, "verifier": VERIFIER}).status_code == 400
     assert count(session, AuthSession) == 0
     assert start(api, challenge="").status_code in (400, 422)
     assert start(api, challenge="not-a-hash").status_code == 400
@@ -905,66 +899,73 @@ def test_a_last_page_that_adds_nothing_still_rebuilds_for_the_pages_before_it(
 # ---------------------------------------------------------------- beta readiness
 
 
-def test_no_account_without_accepting_the_current_terms_and_attesting_age(
+def test_nothing_starts_without_consent_and_nothing_is_read_before_it_is_recorded(
     api: TestClient, session: Session
 ) -> None:
-    code = login_code(api)
-    refused = api.post(
-        "/auth/session",
-        json={
-            "code": code,
-            "verifier": VERIFIER,
-            "terms_version": "2026-09-21",
-            "age_confirmed": False,
-        },
-    )
+    """The defect the review found: mail was read at the callback, consent recorded at redemption."""
+    refused = start(api, consent={"terms_version": "2026-09-21", "age_confirmed": "false"})
     assert refused.status_code == 400 and "16" in refused.json()["detail"]
-    code = login_code(api)
-    stale = api.post(
-        "/auth/session",
-        json={
-            "code": code,
-            "verifier": VERIFIER,
-            "terms_version": "2025-01-01",
-            "age_confirmed": True,
-        },
-    )
+    stale = start(api, consent={"terms_version": "2025-01-01", "age_confirmed": "true"})
     assert stale.status_code == 400 and "terms" in stale.json()["detail"]
-    assert count(session, AuthSession) == 0
+    assert (
+        api.get(
+            "/auth/google/start", params={"redirect": "pwm://auth", "challenge": CHALLENGE}
+        ).status_code
+        == 422
+    )
+    assert count(session, OAuthState) == 0 and count(session, User) == 0
 
-    token = sign_in(api)
-    user = session.scalars(select(User).where(User.google_sub.is_not(None))).one()
+    login_code(api)  # started with consent, callback done, code never redeemed
+    user = session.scalars(select(User)).one()
     assert user.terms_version == "2026-09-21" and user.terms_accepted_at and user.age_attested_at
-    assert api.get("/auth/me", headers=bearer(token)).json()["terms_current"] is True
+    run_all(session, *STAGES)
+    assert count(session, Source) > 0  # reading may begin: consent was on record first
 
 
-def test_changed_terms_are_asked_for_again(
+def test_an_account_whose_terms_are_out_of_date_is_stopped_until_it_accepts(
     api: TestClient, session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     token = sign_in(api)
+    run_all(session, *STAGES)
     monkeypatch.setenv("PWM_TERMS_VERSION", "2027-01-01")
-    assert api.get("/auth/me", headers=bearer(token)).json()["terms_current"] is False
-    config = api.get("/auth/config").json()
-    assert config["terms_version"] == "2027-01-01" and config["privacy_url"].endswith(
-        "/legal/privacy"
-    )
-    code = login_code(api)
+    me = api.get("/auth/me", headers=bearer(token)).json()
+    assert (me["terms_current"], me["terms_version"]) == (False, "2026-09-21")
+    for path in ("/home", "/commitments", "/connections"):
+        blocked = api.get(path, headers=bearer(token))
+        assert blocked.status_code == 403 and blocked.json()["detail"] == "terms_outdated", path
+    assert api.post("/me/export", headers=bearer(token)).status_code == 200  # leaving is allowed
+    # Nothing is read for them meanwhile.
+    from pwm.connectors.service import enqueue_due_syncs
+
+    monkeypatch.setenv("PWM_FIXED_NOW", "2026-09-13T09:00:00+00:00")
+    enqueue_due_syncs(session)
+    before = count(session, Source)
+    fake.deliver(SourceRecord(id="while-stale", kind=SourceKind.EMAIL, observed_at=datetime(2026, 9, 12, 8, tzinfo=UTC),
+                              sender=Party(name="Tom Okafor", address="tom.okafor@brightwave.example"),
+                              recipients=(Party(name="Alex Rivera", address="alex.rivera@example.com"),),
+                              subject="new", body="I'll send it Friday.", provider_labels=("INBOX",)))  # fmt: skip
+    run_all(session, *STAGES)
+    assert count(session, Source) == before
+    # A reconnect cannot smuggle acceptance: starting with the stale version is refused.
     assert (
-        api.post("/auth/session", json={"code": code, "verifier": VERIFIER, **CONSENT}).status_code
+        start(api, consent={"terms_version": "2026-09-21", "age_confirmed": "true"}).status_code
         == 400
     )
-    code = login_code(api)
+    # Accepting in the app unblocks everything.
+    accepted = api.post(
+        "/auth/consent",
+        json={"terms_version": "2027-01-01", "age_confirmed": True},
+        headers=bearer(token),
+    )
+    assert accepted.status_code == 200 and accepted.json()["terms_current"] is True
+    assert api.get("/home", headers=bearer(token)).status_code == 200
     assert (
         api.post(
-            "/auth/session",
-            json={
-                "code": code,
-                "verifier": VERIFIER,
-                "terms_version": "2027-01-01",
-                "age_confirmed": True,
-            },
+            "/auth/consent",
+            json={"terms_version": "2026-09-21", "age_confirmed": True},
+            headers=bearer(token),
         ).status_code
-        == 200
+        == 400
     )
 
 
@@ -1017,6 +1018,46 @@ def test_export_holds_everything_and_the_link_works_once(api: TestClient, sessio
     assert {c["connector"] for c in data["connections"]} == {"gmail", "google_calendar"}
     assert "refresh" not in json.dumps(data).lower() and "1//" not in json.dumps(data)
     assert api.get(path).status_code == 404  # spent
+    assert data["sessions"] and data["stage_results"] and all("id" in p for p in data["people"])
+    names = [e["name"] for e in data["usage_events"]]
+    assert "export_requested" in names and "export_downloaded" in names
+
+
+def test_an_export_link_is_won_by_exactly_one_request(
+    api: TestClient, session: Session, engine
+) -> None:  # type: ignore[no-untyped-def]
+    import threading
+
+    from sqlalchemy import delete
+
+    from pwm.api.export import _hash
+    from pwm.db.models import ExportCode
+
+    token = sign_in(api)
+    ticket = api.post("/me/export", headers=bearer(token)).json()
+    session.commit()
+    code = ticket["url"].rsplit("/", 1)[1]
+    winners: list[int] = []
+
+    def race() -> None:
+        from sqlalchemy.orm import Session as OrmSession
+
+        with OrmSession(engine) as own:
+            won = own.execute(
+                delete(ExportCode)
+                .where(ExportCode.code_hash == _hash(code))
+                .returning(ExportCode.user_id)
+            ).first()
+            own.commit()
+            if won:
+                winners.append(1)
+
+    threads = [threading.Thread(target=race) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(winners) == 1
 
 
 def test_an_export_is_the_users_own(api: TestClient, session: Session) -> None:

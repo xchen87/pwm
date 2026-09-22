@@ -22,7 +22,9 @@ Google = Annotated[GoogleClient, Depends(google_client)]
 class LoginCodeIn(BaseModel):
     code: str = Field(min_length=10, max_length=200)
     verifier: str = Field(min_length=32, max_length=200)
-    # Consent travels with the redemption: no account is usable without it.
+
+
+class ConsentIn(BaseModel):
     terms_version: str = Field(max_length=32)
     age_confirmed: bool
 
@@ -47,8 +49,10 @@ class Me(BaseModel):
     email: str
     name: str | None
     signed_in_with_google: bool
-    # False when the terms changed since this person accepted them.
+    # False when the terms changed since this person accepted them. Until they accept the
+    # new ones (POST /auth/consent) every other endpoint answers 403.
     terms_current: bool
+    terms_version: str | None
 
 
 @router.get("/auth/config")
@@ -67,9 +71,12 @@ def config() -> AuthConfig:
 
 
 @router.get("/auth/google/start")
-def start(redirect: str, challenge: str, session: DbSession) -> RedirectResponse:
+def start(
+    redirect: str, challenge: str, terms_version: str, age_confirmed: bool, session: DbSession
+) -> RedirectResponse:
     try:
-        url = auth.start(session, get_settings(), redirect, challenge)
+        consent = auth.Consent(terms_version, age_confirmed)
+        url = auth.start(session, get_settings(), redirect, challenge, consent)
     except auth.AuthError as problem:
         raise HTTPException(400, str(problem)) from None
     session.commit()
@@ -101,8 +108,7 @@ def callback(
 @router.post("/auth/session")
 def create_session(body: LoginCodeIn, session: DbSession) -> SessionOut:
     try:
-        consent = auth.Consent(body.terms_version, body.age_confirmed)
-        token = auth.redeem(session, get_settings(), body.code, body.verifier, consent)
+        token = auth.redeem(session, get_settings(), body.code, body.verifier)
     except auth.AuthError as problem:
         session.commit()  # the code is spent either way
         raise HTTPException(400, str(problem)) from None
@@ -118,8 +124,23 @@ def me(user: CurrentUser) -> Me:
         email=user.email,
         name=user.name,
         signed_in_with_google=user.google_sub is not None,
-        terms_current=user.terms_version == get_settings().terms_version,
+        terms_current=auth.terms_current(get_settings(), user),
+        terms_version=user.terms_version,
     )
+
+
+@router.post("/auth/consent")
+def accept_terms(body: ConsentIn, session: DbSession, user: CurrentUser) -> Me:
+    """Accept changed terms from inside the app. The only thing a stale account may do
+    besides read the terms, export its data, sign out or delete itself."""
+    try:
+        auth.record_consent(
+            session, get_settings(), user, auth.Consent(body.terms_version, body.age_confirmed)
+        )
+    except auth.AuthError as problem:
+        raise HTTPException(400, str(problem)) from None
+    session.commit()
+    return me(user)
 
 
 @router.post("/auth/logout")

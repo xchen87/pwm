@@ -92,6 +92,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Terms
+         * @description Accept changed terms from inside the app. The only thing a stale account may do
+         *     besides read the terms, export its data, sign out or delete itself.
+         */
+        post: operations["accept_terms_auth_consent_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/logout": {
         parameters: {
             query?: never;
@@ -911,6 +932,13 @@ export interface components {
             /** Understood */
             understood: number;
         };
+        /** ConsentIn */
+        ConsentIn: {
+            /** Terms Version */
+            terms_version: string;
+            /** Age Confirmed */
+            age_confirmed: boolean;
+        };
         /** Correction */
         Correction: {
             /** What */
@@ -1008,10 +1036,6 @@ export interface components {
             code: string;
             /** Verifier */
             verifier: string;
-            /** Terms Version */
-            terms_version: string;
-            /** Age Confirmed */
-            age_confirmed: boolean;
         };
         /** Me */
         Me: {
@@ -1023,6 +1047,8 @@ export interface components {
             signed_in_with_google: boolean;
             /** Terms Current */
             terms_current: boolean;
+            /** Terms Version */
+            terms_version: string | null;
         };
         /** NewMemory */
         NewMemory: {
@@ -1181,6 +1207,8 @@ export interface operations {
             query: {
                 redirect: string;
                 challenge: string;
+                terms_version: string;
+                age_confirmed: boolean;
             };
             header?: never;
             path?: never;
@@ -1284,6 +1312,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_terms_auth_consent_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsentIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

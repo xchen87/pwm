@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -13,8 +13,20 @@ from pwm.sources import Party
 
 DbSession = Annotated[Session, Depends(get_session)]
 
+# What an account whose accepted terms are out of date may still do: see the terms, accept
+# them, take its data, sign out, or leave. Everything else waits.
+ALLOWED_WHILE_STALE = {
+    ("GET", "/auth/me"),
+    ("POST", "/auth/consent"),
+    ("POST", "/auth/logout"),
+    ("POST", "/me/export"),
+    ("DELETE", "/me"),
+}
 
-def current_user(session: DbSession, authorization: Annotated[str | None, Header()] = None) -> User:
+
+def current_user(
+    request: Request, session: DbSession, authorization: Annotated[str | None, Header()] = None
+) -> User:
     """Who is asking. Every handler gets the user from here and nowhere else.
 
     A valid session token always wins. Without one, the local development user is served
@@ -27,6 +39,11 @@ def current_user(session: DbSession, authorization: Annotated[str | None, Header
         user = auth.user_for(session, token.strip()) if scheme.lower() == "bearer" else None
         if user is None:
             raise HTTPException(401, "sign in again")
+        if (
+            not auth.terms_current(settings, user)
+            and (request.method, request.url.path) not in ALLOWED_WHILE_STALE
+        ):
+            raise HTTPException(403, "terms_outdated")
         return user
     if not settings.is_local or not settings.dev_login:
         raise HTTPException(401, "sign in required")
