@@ -57,7 +57,13 @@ def quote_hash(quote: str) -> str:
 def ensure_user(session: Session, party: Party) -> User:
     user = session.scalar(select(User).where(User.email == party.address.lower()))
     if user is None:
-        user = User(email=party.address.lower(), name=party.name)
+        # A user made this way is the local development identity or a test fixture; treat
+        # its consent as given, so the dev path behaves like a signed-up account.
+        settings = get_settings()
+        user = User(
+            email=party.address.lower(), name=party.name, terms_version=settings.terms_version,
+            terms_accepted_at=clock.now(), age_attested_at=clock.now(),
+        )  # fmt: skip
         session.add(user)
         session.flush()
     return user

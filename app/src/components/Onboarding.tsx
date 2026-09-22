@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { connectDemo, type ConnectionsView } from '../api/client';
-import { signInWithGoogle } from '../signIn';
+import { reconnectGoogle } from '../signIn';
 import { color, space } from '../theme';
 import { Button } from './Button';
 
@@ -30,7 +30,7 @@ export function Onboarding({ connections, onConnected }: Props) {
     setWorking(true);
     setError(null);
     try {
-      if (await signInWithGoogle()) await onConnected();
+      if (await reconnectGoogle()) await onConnected();
     } catch {
       setError('Google sign-in didn’t complete. Try again.');
     } finally {

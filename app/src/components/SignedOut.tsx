@@ -1,23 +1,27 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+
+import type { AuthConfig } from '../api/client';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { signInWithGoogle } from '../signIn';
 import { color, space } from '../theme';
 import { Button } from './Button';
 
-type Props = { googleAvailable: boolean; onSignedIn: () => Promise<void> | void };
+type Props = { config: AuthConfig; onSignedIn: () => Promise<void> | void };
 
 /** Shown whenever there is no valid session. Depends on nothing that needs one. */
-export function SignedOut({ googleAvailable, onSignedIn }: Props) {
+export function SignedOut({ config, onSignedIn }: Props) {
   const [working, setWorking] = useState(false);
+  const [ofAge, setOfAge] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const signIn = async () => {
     setWorking(true);
     setError(null);
     try {
-      if (await signInWithGoogle()) await onSignedIn();
+      if (await signInWithGoogle({ termsVersion: config.terms_version, ageConfirmed: true })) await onSignedIn();
     } catch {
       setError('Google sign-in didn’t complete. Try again.');
     } finally {
@@ -39,13 +43,33 @@ export function SignedOut({ googleAvailable, onSignedIn }: Props) {
           <Text style={styles.promise}>• A guess stays a guess until you confirm it.</Text>
           <Text style={styles.promise}>• Disconnect any time and what it brought in is deleted.</Text>
         </View>
-        {googleAvailable ? (
-          <Button
-            label={working ? 'Opening Google…' : 'Continue with Google'}
-            kind="primary"
-            onPress={signIn}
-            disabled={working}
-          />
+        {config.google ? (
+          <>
+            <Pressable onPress={() => setOfAge(!ofAge)} accessibilityRole="checkbox" accessibilityState={{ checked: ofAge }} style={styles.check}>
+              <Text style={styles.box}>{ofAge ? '☑' : '☐'}</Text>
+              <Text style={styles.checkText}>I am {config.minimum_age} or older.</Text>
+            </Pressable>
+            <Pressable onPress={() => setAgreed(!agreed)} accessibilityRole="checkbox" accessibilityState={{ checked: agreed }} style={styles.check}>
+              <Text style={styles.box}>{agreed ? '☑' : '☐'}</Text>
+              <Text style={styles.checkText}>
+                I agree to the{' '}
+                <Text style={styles.link} onPress={() => Linking.openURL(config.terms_url)}>
+                  Terms
+                </Text>{' '}
+                and the{' '}
+                <Text style={styles.link} onPress={() => Linking.openURL(config.privacy_url)}>
+                  Privacy Policy
+                </Text>
+                .
+              </Text>
+            </Pressable>
+            <Button
+              label={working ? 'Opening Google…' : 'Continue with Google'}
+              kind="primary"
+              onPress={signIn}
+              disabled={working || !ofAge || !agreed}
+            />
+          </>
         ) : (
           <Text style={styles.note}>Sign-in isn’t set up on this server yet.</Text>
         )}
@@ -63,5 +87,9 @@ const styles = StyleSheet.create({
   promises: { gap: space.sm },
   promise: { fontSize: 15, lineHeight: 21, color: color.muted },
   note: { fontSize: 15, color: color.muted },
+  check: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
+  box: { fontSize: 20, lineHeight: 24, color: color.ink },
+  checkText: { flex: 1, fontSize: 15, lineHeight: 22, color: color.ink },
+  link: { color: color.accent, fontWeight: '700' },
   error: { fontSize: 14, color: color.warn },
 });

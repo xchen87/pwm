@@ -78,6 +78,7 @@ def api(session: Session, google: GoogleClient) -> Iterator[TestClient]:
 
 VERIFIER = "v" * 64
 CHALLENGE = hashlib.sha256(VERIFIER.encode()).hexdigest()
+CONSENT = {"terms_version": "2026-09-21", "age_confirmed": True}
 
 
 def start(api: TestClient, redirect: str = "pwm://auth", challenge: str = CHALLENGE):  # type: ignore[no-untyped-def]
@@ -103,7 +104,7 @@ def login_code(api: TestClient, redirect: str = "pwm://auth", challenge: str = C
 def sign_in(api: TestClient, redirect: str = "pwm://auth") -> str:
     """Walk the browser through the whole flow; returns a session token."""
     granted = api.post(
-        "/auth/session", json={"code": login_code(api, redirect), "verifier": VERIFIER}
+        "/auth/session", json={"code": login_code(api, redirect), "verifier": VERIFIER, **CONSENT}
     )
     assert granted.status_code == 200
     return str(granted.json()["token"])
@@ -129,6 +130,7 @@ def test_sign_in_creates_a_user_a_session_and_an_encrypted_token(
         "email": "alex.rivera@example.com",
         "name": "Alex Rivera",
         "signed_in_with_google": True,
+        "terms_current": True,
     }
 
     stored = session.scalars(select(OAuthToken)).one()
@@ -171,8 +173,14 @@ def test_a_login_code_works_once_and_a_state_works_once(api: TestClient, session
         api.get(f"{back.path}?{back.query}", follow_redirects=False).status_code == 400
     )  # replayed callback
     code = parse_qs(urlparse(first.headers["location"]).query)["code"][0]
-    assert api.post("/auth/session", json={"code": code, "verifier": VERIFIER}).status_code == 200
-    assert api.post("/auth/session", json={"code": code, "verifier": VERIFIER}).status_code == 400
+    assert (
+        api.post("/auth/session", json={"code": code, "verifier": VERIFIER, **CONSENT}).status_code
+        == 200
+    )
+    assert (
+        api.post("/auth/session", json={"code": code, "verifier": VERIFIER, **CONSENT}).status_code
+        == 400
+    )
     assert (
         api.get("/auth/google/callback?state=made-up&code=x", follow_redirects=False).status_code
         == 400
@@ -410,9 +418,15 @@ def test_a_login_code_is_useless_without_the_secret_of_the_app_that_started_it(
     """Covers interception (another app receives pwm://auth?code=) and login CSRF (a link
     an attacker sends): in both, the redeemer does not hold the starting app's secret."""
     code = login_code(api)
-    assert api.post("/auth/session", json={"code": code, "verifier": "w" * 64}).status_code == 400
+    assert (
+        api.post("/auth/session", json={"code": code, "verifier": "w" * 64, **CONSENT}).status_code
+        == 400
+    )
     # ...and the attempt burned the code, so the thief cannot retry, nor can anyone else.
-    assert api.post("/auth/session", json={"code": code, "verifier": VERIFIER}).status_code == 400
+    assert (
+        api.post("/auth/session", json={"code": code, "verifier": VERIFIER, **CONSENT}).status_code
+        == 400
+    )
     assert count(session, AuthSession) == 0
     assert start(api, challenge="").status_code in (400, 422)
     assert start(api, challenge="not-a-hash").status_code == 400
@@ -886,3 +900,133 @@ def test_a_last_page_that_adds_nothing_still_rebuilds_for_the_pages_before_it(
         session.scalar(select(func.count()).where(Assertion.evidence_quote.contains("file number")))
         == 70
     )
+
+
+# ---------------------------------------------------------------- beta readiness
+
+
+def test_no_account_without_accepting_the_current_terms_and_attesting_age(
+    api: TestClient, session: Session
+) -> None:
+    code = login_code(api)
+    refused = api.post(
+        "/auth/session",
+        json={
+            "code": code,
+            "verifier": VERIFIER,
+            "terms_version": "2026-09-21",
+            "age_confirmed": False,
+        },
+    )
+    assert refused.status_code == 400 and "16" in refused.json()["detail"]
+    code = login_code(api)
+    stale = api.post(
+        "/auth/session",
+        json={
+            "code": code,
+            "verifier": VERIFIER,
+            "terms_version": "2025-01-01",
+            "age_confirmed": True,
+        },
+    )
+    assert stale.status_code == 400 and "terms" in stale.json()["detail"]
+    assert count(session, AuthSession) == 0
+
+    token = sign_in(api)
+    user = session.scalars(select(User).where(User.google_sub.is_not(None))).one()
+    assert user.terms_version == "2026-09-21" and user.terms_accepted_at and user.age_attested_at
+    assert api.get("/auth/me", headers=bearer(token)).json()["terms_current"] is True
+
+
+def test_changed_terms_are_asked_for_again(
+    api: TestClient, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = sign_in(api)
+    monkeypatch.setenv("PWM_TERMS_VERSION", "2027-01-01")
+    assert api.get("/auth/me", headers=bearer(token)).json()["terms_current"] is False
+    config = api.get("/auth/config").json()
+    assert config["terms_version"] == "2027-01-01" and config["privacy_url"].endswith(
+        "/legal/privacy"
+    )
+    code = login_code(api)
+    assert (
+        api.post("/auth/session", json={"code": code, "verifier": VERIFIER, **CONSENT}).status_code
+        == 400
+    )
+    code = login_code(api)
+    assert (
+        api.post(
+            "/auth/session",
+            json={
+                "code": code,
+                "verifier": VERIFIER,
+                "terms_version": "2027-01-01",
+                "age_confirmed": True,
+            },
+        ).status_code
+        == 200
+    )
+
+
+def test_legal_pages_are_public_and_filled_in(
+    api: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PWM_LEGAL_COMPANY", "Example Labs Ltd")
+    monkeypatch.setenv("PWM_LEGAL_CONTACT_EMAIL", "privacy@example.test")
+    monkeypatch.setenv("PWM_ENVIRONMENT", "production")  # public: no session needed
+    for page in ("privacy", "terms", "subprocessors"):
+        response = api.get(f"/legal/{page}")
+        assert response.status_code == 200 and "text/html" in response.headers["content-type"]
+        assert "{{COMPANY}}" not in response.text  # configured values are filled in
+    assert "{{HOSTING_REGION}}" in api.get("/legal/privacy").text  # unconfigured ones stay visible
+    for page in ("privacy", "terms"):
+        assert "Example Labs Ltd" in api.get(f"/legal/{page}").text
+    privacy = api.get("/legal/privacy").text
+    assert (
+        "at least 16" in privacy and "privacy@example.test" in privacy and "<script" not in privacy
+    )
+    assert "Limited Use" in privacy
+    assert "<table>" in api.get("/legal/subprocessors").text
+    assert api.get("/legal/nope").status_code == 404
+
+
+def test_export_holds_everything_and_the_link_works_once(api: TestClient, session: Session) -> None:
+    token = sign_in(api)
+    run_all(session, *STAGES)
+    api.post("/memories", json={"text": "The spare key is with Marguerite."}, headers=bearer(token))
+    ticket = api.post("/me/export", headers=bearer(token)).json()
+    assert (
+        ticket["url"].startswith("http://localhost:8000/me/export/")
+        and ticket["expires_in_seconds"] == 600
+    )
+    path = ticket["url"].split("localhost:8000", 1)[1]
+    assert (
+        api.get("/me/export", headers=bearer(token)).status_code == 405
+    )  # no bearer-in-URL shortcut
+    download = api.get(path)  # no bearer: the code is the credential, once
+    assert download.status_code == 200 and "attachment" in download.headers["content-disposition"]
+    data = download.json()
+    assert data["format"] == "personal-world-model-export/1"
+    assert (
+        data["account"]["email"] == "alex.rivera@example.com" and data["account"]["terms_version"]
+    )
+    assert len(data["sources"]) == 120 and any(
+        "Finance only closed the books" in (s.get("body") or "") for s in data["sources"]
+    )  # bodies opened
+    assert any("Marguerite" in a["value"] for a in data["assertions"])
+    assert {c["connector"] for c in data["connections"]} == {"gmail", "google_calendar"}
+    assert "refresh" not in json.dumps(data).lower() and "1//" not in json.dumps(data)
+    assert api.get(path).status_code == 404  # spent
+
+
+def test_an_export_is_the_users_own(api: TestClient, session: Session) -> None:
+    sign_in(api)
+    other = session.scalars(select(User)).one()
+    from pwm.pipeline.store import ensure_user
+    from pwm.sources import Party
+
+    stranger = ensure_user(session, Party(name="S", address="stranger@example.com"))
+    session.commit()
+    from pwm.api.export import build_export
+
+    assert build_export(session, stranger)["sources"] == [] and other.email != stranger.email

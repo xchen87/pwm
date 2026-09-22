@@ -9,7 +9,9 @@ from pwm.api.auth import router as auth_router
 from pwm.api.commitments import router as commitments_router
 from pwm.api.connections import router as connections_router
 from pwm.api.devices import router as devices_router
+from pwm.api.export import router as export_router
 from pwm.api.home import router as home_router
+from pwm.api.legal import router as legal_router
 from pwm.api.people import router as people_router
 from pwm.api.wellknown import router as wellknown_router
 from pwm.config import get_settings
@@ -38,6 +40,8 @@ app.include_router(connections_router)
 app.include_router(people_router)
 app.include_router(devices_router)
 app.include_router(wellknown_router)
+app.include_router(legal_router)
+app.include_router(export_router)
 
 
 async def _provider_unavailable(request: Request, error: Exception) -> JSONResponse:

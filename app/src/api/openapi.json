@@ -1733,6 +1733,128 @@
         }
       }
     },
+    "/legal/{page}": {
+      "get": {
+        "summary": "Legal",
+        "operationId": "legal_legal__page__get",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Page"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/export": {
+      "post": {
+        "summary": "Request Export",
+        "operationId": "request_export_me_export_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportTicket"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/export/{code}": {
+      "get": {
+        "summary": "Download Export",
+        "operationId": "download_export_me_export__code__get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -1981,12 +2103,32 @@
           "dev_login": {
             "type": "boolean",
             "title": "Dev Login"
+          },
+          "terms_version": {
+            "type": "string",
+            "title": "Terms Version"
+          },
+          "minimum_age": {
+            "type": "integer",
+            "title": "Minimum Age"
+          },
+          "privacy_url": {
+            "type": "string",
+            "title": "Privacy Url"
+          },
+          "terms_url": {
+            "type": "string",
+            "title": "Terms Url"
           }
         },
         "type": "object",
         "required": [
           "google",
-          "dev_login"
+          "dev_login",
+          "terms_version",
+          "minimum_age",
+          "privacy_url",
+          "terms_url"
         ],
         "title": "AuthConfig"
       },
@@ -2550,6 +2692,24 @@
         ],
         "title": "EventIn"
       },
+      "ExportTicket": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "expires_in_seconds": {
+            "type": "integer",
+            "title": "Expires In Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "expires_in_seconds"
+        ],
+        "title": "ExportTicket"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2678,12 +2838,23 @@
             "maxLength": 200,
             "minLength": 32,
             "title": "Verifier"
+          },
+          "terms_version": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Terms Version"
+          },
+          "age_confirmed": {
+            "type": "boolean",
+            "title": "Age Confirmed"
           }
         },
         "type": "object",
         "required": [
           "code",
-          "verifier"
+          "verifier",
+          "terms_version",
+          "age_confirmed"
         ],
         "title": "LoginCodeIn"
       },
@@ -2707,13 +2878,18 @@
           "signed_in_with_google": {
             "type": "boolean",
             "title": "Signed In With Google"
+          },
+          "terms_current": {
+            "type": "boolean",
+            "title": "Terms Current"
           }
         },
         "type": "object",
         "required": [
           "email",
           "name",
-          "signed_in_with_google"
+          "signed_in_with_google",
+          "terms_current"
         ],
         "title": "Me"
       },

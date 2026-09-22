@@ -62,6 +62,22 @@ class Settings(BaseSettings):
     # Previous keys, still accepted for reading, so the key can be rotated (see `cli reseal`).
     data_keys_old: list[str] = []
 
+    # Consent. The terms version is the "last updated" date of docs/legal; changing it makes
+    # every user accept again at their next sign-in.
+    terms_version: str = "2026-09-21"
+    minimum_age: int = 16
+    # Filled into the legal texts. Drafts until a lawyer has reviewed them.
+    legal_company: str = "{{COMPANY}}"
+    legal_product: str = "Your World"
+    legal_address: str = "{{ADDRESS}}"
+    legal_contact_email: str = "{{CONTACT_EMAIL}}"
+    legal_governing_law: str = "{{GOVERNING_LAW}}"
+    legal_liability_cap: str = "{{LIABILITY_CAP}}"
+    legal_hosting_provider: str = "{{HOSTING_PROVIDER}}"
+    legal_hosting_region: str = "{{HOSTING_REGION}}"
+    legal_backup_days: int = 30
+    export_code_minutes: int = 10
+
     @property
     def is_local(self) -> bool:
         """Local development, and believably so: a server that says "local" while announcing a

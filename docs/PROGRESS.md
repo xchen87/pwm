@@ -24,6 +24,7 @@ Working constraint (founder, 2026-09-21): reach a showable, demo-ready MVP **wit
 | Slice 3 — Ask Your World + Remember / Correct / Forget | done; independently reviewed, findings fixed | same |
 | Demo readiness — onboarding, connections/disconnect/delete, same-person confirmation, demo launcher and script, in-browser checks | done; independently reviewed, findings fixed | commit `926d450` + next; verify green (122 tests, 87 functional checks incl. the built app in headless Chrome) |
 | Slice 4 — accounts, real Gmail/Calendar | **built against a stand-in for Google; unverified against Google itself**; two independent reviews, findings fixed; merged | `master`; verify green |
+| Beta readiness — consent, legal pages, export, DPIA outline, checklist | built; legal texts are **drafts for a lawyer**; independent review in progress | `master`; verify green |
 | Slice 5 — phone delivery | push, device registration, deep links, app lock, app-link plumbing and store config **built and tested against a stand-in for Expo**; independently reviewed, findings fixed. **Never run on a phone**: builds, push tokens and app links need the founder's Expo / Apple / Google identities | `master`; verify green |
 | Live LLM evaluation | blocked: **needs founder** (API key + spend approval) | |
 
@@ -276,3 +277,7 @@ Could not break: challenge enforcement and constant-time comparison; login CSRF;
 Also found by the gate, not the reviewer: a patch had written a literal `\n` into `app.json`, which broke the web build; the functional test caught it.
 
 - `scripts/verify.sh`: **ALL GREEN** — 304 backend/eval tests, 8 app tests, 145 functional checks.
+
+**Beta readiness.** Founder asked what compliance shipping needs, then asked for the pieces. Built: age attestation and terms acceptance at sign-in, recorded on the account and re-asked when the terms version changes (D75); the privacy policy, terms and sub-processor list as drafts in `docs/legal`, served publicly at `/legal/*` with company details from settings (D76); a one-time-link data export of everything an account holds (D77); a DPIA outline and a beta checklist (`docs/beta-checklist.md`) that separates what is built from what only the founder or a lawyer can do. The app gained the consent step, legal links and an export button.
+- Not built, listed in the checklist: body retention window; Gmail deletion propagation; rate limiting; the legal review itself.
+- `scripts/verify.sh`: **ALL GREEN** — 309 backend/eval tests, 8 app tests, 152 functional checks (the browser sign-in now passes through the consent step).

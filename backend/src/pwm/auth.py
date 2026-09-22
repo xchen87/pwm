@@ -190,7 +190,30 @@ def _user_for_google(session: Session, sub: str, email: str, name: str | None) -
     return user
 
 
-def redeem(session: Session, settings: Settings, login_code: str, verifier: str) -> str:
+class Consent:
+    """What the person agreed to when finishing sign-in."""
+
+    def __init__(self, terms_version: str, age_confirmed: bool) -> None:
+        self.terms_version, self.age_confirmed = terms_version, age_confirmed
+
+
+def record_consent(session: Session, settings: Settings, user: User, consent: Consent) -> None:
+    """Sign-in completes only with the current terms accepted and age attested. Recorded once
+    per version; asked again whenever the terms change."""
+    if consent.terms_version != settings.terms_version:
+        raise AuthError("please accept the current terms to continue")
+    if not consent.age_confirmed:
+        raise AuthError(f"you must be at least {settings.minimum_age} to use this")
+    now = clock.now()
+    if user.terms_version != settings.terms_version:
+        user.terms_version, user.terms_accepted_at = settings.terms_version, now
+    if user.age_attested_at is None:
+        user.age_attested_at = now
+
+
+def redeem(
+    session: Session, settings: Settings, login_code: str, verifier: str, consent: Consent
+) -> str:
     """Exchange a login code for a session token.
 
     The code works once, and only for whoever can show the secret whose hash was given when
@@ -206,6 +229,7 @@ def redeem(session: Session, settings: Settings, login_code: str, verifier: str)
         row.app_challenge, _hash(verifier)
     ):
         raise AuthError("that sign-in code is not valid")
+    record_consent(session, settings, session.get_one(User, row.user_id), consent)
     token = secrets.token_urlsafe(48)
     session.add(
         AuthSession(

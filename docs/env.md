@@ -25,6 +25,10 @@ Backend variables use the `PWM_` prefix and may be placed in a `.env` file at th
 | `PWM_PUSH_URL` | Expo's push endpoint | Where brief notifications are sent. Empty disables push (in-app inbox only); tests and the demo set it empty. |
 | `PWM_APPLE_APP_ID` | unset | `<TEAM_ID>.<bundle id>`; enables `/.well-known/apple-app-site-association`. |
 | `PWM_ANDROID_PACKAGE` / `PWM_ANDROID_CERT_FINGERPRINTS` | unset | Package name and JSON list of SHA-256 signing fingerprints; enable `/.well-known/assetlinks.json`. |
+| `PWM_TERMS_VERSION` | `2026-09-21` | The "last updated" date of the legal texts. Change it and every account must accept again. |
+| `PWM_MINIMUM_AGE` | `16` | Age attested at sign-up. |
+| `PWM_LEGAL_COMPANY`, `_PRODUCT`, `_ADDRESS`, `_CONTACT_EMAIL`, `_GOVERNING_LAW`, `_LIABILITY_CAP`, `_HOSTING_PROVIDER`, `_HOSTING_REGION`, `_BACKUP_DAYS` | placeholders | Filled into `/legal/*`. Unset ones render visibly as `{{NAME}}`. |
+| `PWM_EXPORT_CODE_MINUTES` | `10` | Lifetime of a data-export link. |
 | `PWM_CORS_ORIGINS` | `["http://localhost:8081","http://localhost:19006"]` | JSON list of web origins allowed to call the API. |
 
 App variables are read by Expo at build time. Anything prefixed `EXPO_PUBLIC_` is compiled into the app bundle and is visible to anyone who has the app: never put a secret in one.

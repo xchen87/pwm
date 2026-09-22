@@ -50,6 +50,10 @@ class User(Base):
     name: Mapped[str | None] = mapped_column(String(200))
     # Google's stable account id. Email can change; this cannot.
     google_sub: Mapped[str | None] = mapped_column(String(64), unique=True)
+    # Consent, as given at sign-up: which terms, when, and that they attested to being old enough.
+    terms_version: Mapped[str | None] = mapped_column(String(32))
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    age_attested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # "What changed" is measured from the previous visit, not this one.
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     previous_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -339,6 +343,17 @@ class LoginCode(Base):
     user_id: Mapped[UUID] = _user()
     # Redeemable only by whoever holds the secret whose hash this is.
     app_challenge: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ExportCode(Base):
+    """A single-use, short-lived code that lets a browser download the user's export without
+    a bearer token in the URL."""
+
+    __tablename__ = "export_codes"
+
+    code_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[UUID] = _user()
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

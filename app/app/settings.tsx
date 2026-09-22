@@ -1,25 +1,27 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
   confirmSamePerson,
   type ConnectionsView,
   deleteEverything,
   disconnect,
+  getAuthConfig,
   getConnections,
   getMe,
   getPeople,
   markDifferentPerson,
   type Me,
   type PersonView,
+  requestExport,
   signOut,
 } from '../src/api/client';
 import { Button } from '../src/components/Button';
 import { lockAvailable, lockEnabled, setLockEnabled } from '../src/lock';
 import { disablePush, enablePush } from '../src/push';
 import { clearToken } from '../src/session';
-import { signInWithGoogle } from '../src/signIn';
+import { reconnectGoogle } from '../src/signIn';
 import { color, space } from '../src/theme';
 
 export default function Settings() {
@@ -29,6 +31,8 @@ export default function Settings() {
   const [me, setMe] = useState<Me | null>(null);
   const [lock, setLock] = useState<{ available: boolean; on: boolean }>({ available: false, on: false });
   const [push, setPush] = useState<string | null>(null);
+  const [legal, setLegal] = useState<{ privacy_url: string; terms_url: string } | null>(null);
+  const [exported, setExported] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -37,6 +41,7 @@ export default function Settings() {
     getConnections().then(setState, () => setError('Can’t reach your world right now.'));
     getPeople().then(setPeople, () => undefined);
     getMe().then(setMe, () => undefined);
+    getAuthConfig().then(setLegal, () => undefined);
     Promise.all([lockAvailable(), lockEnabled()]).then(([available, on]) => setLock({ available, on }));
   }, []);
   useFocusEffect(load);
@@ -84,7 +89,7 @@ export default function Settings() {
               <Text style={styles.error}>
                 Google says my access has ended (you removed it, or it expired). Nothing new is being read.
               </Text>
-              <Button label="Reconnect with Google" kind="primary" onPress={() => run(signInWithGoogle, false)} />
+              <Button label="Reconnect with Google" kind="primary" onPress={() => run(reconnectGoogle, false)} />
             </>
           )}
           {confirming === c.connector ? (
@@ -166,6 +171,30 @@ export default function Settings() {
 
       <Text style={styles.section}>What I hold</Text>
       <Text style={styles.muted}>{state?.understood ?? 0} things understood from what you connected.</Text>
+      <Button
+        label="Export everything as a file"
+        onPress={() =>
+          requestExport().then(
+            (ticket) => {
+              setExported(`Your download link works once and for ${Math.round(ticket.expires_in_seconds / 60)} minutes.`);
+              void Linking.openURL(ticket.url);
+            },
+            () => setExported('That didn’t work. Try again.'),
+          )
+        }
+      />
+      {exported && <Text style={styles.muted}>{exported}</Text>}
+      {legal && (
+        <Text style={styles.muted}>
+          <Text style={styles.link} onPress={() => Linking.openURL(legal.privacy_url)}>
+            Privacy Policy
+          </Text>
+          {' · '}
+          <Text style={styles.link} onPress={() => Linking.openURL(legal.terms_url)}>
+            Terms
+          </Text>
+        </Text>
+      )}
 
       <Text style={styles.section}>Delete everything</Text>
       <Text style={styles.muted}>Removes every source, everything understood, your notes, and your briefs.</Text>
@@ -197,4 +226,5 @@ const styles = StyleSheet.create({
   muted: { fontSize: 14, lineHeight: 20, color: color.muted },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   error: { fontSize: 14, color: color.warn, marginTop: space.md },
+  link: { color: color.accent, fontWeight: '700' },
 });

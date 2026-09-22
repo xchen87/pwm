@@ -22,12 +22,19 @@ Google = Annotated[GoogleClient, Depends(google_client)]
 class LoginCodeIn(BaseModel):
     code: str = Field(min_length=10, max_length=200)
     verifier: str = Field(min_length=32, max_length=200)
+    # Consent travels with the redemption: no account is usable without it.
+    terms_version: str = Field(max_length=32)
+    age_confirmed: bool
 
 
 class AuthConfig(BaseModel):
     google: bool
     # True only in local development: the API answers without a session.
     dev_login: bool
+    terms_version: str
+    minimum_age: int
+    privacy_url: str
+    terms_url: str
 
 
 class SessionOut(BaseModel):
@@ -40,15 +47,22 @@ class Me(BaseModel):
     email: str
     name: str | None
     signed_in_with_google: bool
+    # False when the terms changed since this person accepted them.
+    terms_current: bool
 
 
 @router.get("/auth/config")
 def config() -> AuthConfig:
     """What a signed-out app needs to know to offer sign-in. Public by design."""
     settings = get_settings()
+    base = settings.public_url.rstrip("/")
     return AuthConfig(
         google=settings.google_configured,
         dev_login=settings.is_local and settings.dev_login,
+        terms_version=settings.terms_version,
+        minimum_age=settings.minimum_age,
+        privacy_url=f"{base}/legal/privacy",
+        terms_url=f"{base}/legal/terms",
     )
 
 
@@ -87,7 +101,8 @@ def callback(
 @router.post("/auth/session")
 def create_session(body: LoginCodeIn, session: DbSession) -> SessionOut:
     try:
-        token = auth.redeem(session, get_settings(), body.code, body.verifier)
+        consent = auth.Consent(body.terms_version, body.age_confirmed)
+        token = auth.redeem(session, get_settings(), body.code, body.verifier, consent)
     except auth.AuthError as problem:
         session.commit()  # the code is spent either way
         raise HTTPException(400, str(problem)) from None
@@ -99,7 +114,12 @@ def create_session(body: LoginCodeIn, session: DbSession) -> SessionOut:
 
 @router.get("/auth/me")
 def me(user: CurrentUser) -> Me:
-    return Me(email=user.email, name=user.name, signed_in_with_google=user.google_sub is not None)
+    return Me(
+        email=user.email,
+        name=user.name,
+        signed_in_with_google=user.google_sub is not None,
+        terms_current=user.terms_version == get_settings().terms_version,
+    )
 
 
 @router.post("/auth/logout")

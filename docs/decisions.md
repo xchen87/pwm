@@ -290,3 +290,14 @@ Biometrics or passcode on foreground, off by default, stored on the device, not 
 
 ### D74. A first read rebuilds the world on the first page, every tenth, and the last
 Rebuilding is a whole-mailbox pass (D19, D44). Doing it per page made a 90-day read quadratic; doing it three or four times keeps "something within minutes" without that. What triggers a rebuild is whether anything is *waiting* since the last one, never whether the current page added it — the first version of this rule left mail unprocessed when a final page added nothing, and the review caught it. Incremental syncs rebuild once each.
+
+## 2026-09-21 — Beta readiness
+
+### D75. Consent is part of sign-in, not a screen after it
+No session is issued unless the redemption carries the current terms version and an age attestation (`PWM_MINIMUM_AGE`, 16: the highest age of digital consent in the EU, and above COPPA's 13). What was accepted, and when, is recorded on the account and exported with it. Bumping `PWM_TERMS_VERSION` makes every account accept again at its next sign-in, and `/auth/me` reports `terms_current` so the app can ask. The local development identity is treated as having consented, so the demo path behaves like a signed-up account.
+
+### D76. The legal texts are served, not shipped
+The privacy policy, terms and sub-processor list live in `docs/legal/*.md` and are rendered at `/legal/{privacy,terms,subprocessors}` with company details from `PWM_LEGAL_*` settings, so Google's consent screen and the app stores have a public URL. Placeholders that are not configured render visibly, so nobody can ship a page with a hidden gap. **They are drafts**: a lawyer must review them, fill the placeholders, and decide governing law, EU/UK representation and the backup retention period. The DPIA outline and the beta checklist list what remains.
+
+### D77. Export is a file, fetched once, with no token in the URL
+`POST /me/export` returns a single-use link valid ten minutes; opening it in the system browser downloads one JSON document holding everything the account has: sources with bodies opened, every assertion with provenance and review state, people, reviews, briefs, notifications, usage events, and the consent record. Never tokens. The two-step shape keeps the bearer token out of URLs (D56) while letting every platform download without extra dependencies.

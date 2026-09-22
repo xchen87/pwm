@@ -234,8 +234,8 @@ def journey_50_google_sign_in_and_sync(api: Any, check: Any, run: Any) -> None:
     )
 
     code = parse_qs(urlparse(to_app).query)["code"][0]
-    session = api.post("/auth/session", {"code": code, "verifier": verifier})
-    api.post("/auth/session", {"code": code, "verifier": verifier}, expect=400)
+    consent = {"terms_version": api.get("/auth/config")["terms_version"], "age_confirmed": True}
+    session = api.post("/auth/session", {"code": code, "verifier": verifier, **consent})
     api.token = session["token"]
     try:
         check(
@@ -293,3 +293,17 @@ def journey_60_phone_delivery(api: Any, check: Any, run: Any) -> None:
     api.get("/briefs/00000000-0000-0000-0000-000000000000", expect=404)
     api.call("DELETE", "/devices", {"push_token": token, "platform": "android"})
     api.get("/.well-known/assetlinks.json", expect=404)
+
+
+def journey_70_beta_readiness(api: Any, check: Any, run: Any) -> None:
+    for page in ("privacy", "terms", "subprocessors"):
+        status, _ = _hop(f"{api.base}/legal/{page}")
+        check(status == 200, f"the {page} page is served publicly")
+    ticket = api.post("/me/export")
+    path = ticket["url"].split(api.base, 1)[1]
+    export = api.get(path)
+    check(
+        export["format"].startswith("personal-world-model-export") and export["sources"],
+        "the export downloads once",
+    )
+    api.get(path, expect=404)

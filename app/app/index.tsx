@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   ApiError,
+  type AuthConfig,
   type ConnectionsView,
   getAuthConfig,
   getConnections,
@@ -27,7 +28,7 @@ export default function YourWorld() {
   const [home, setHome] = useState<Home | null>(null);
   const [connections, setConnections] = useState<ConnectionsView | null>(null);
   // null: signed in (or not yet known). Otherwise: signed out, and whether Google is on offer.
-  const [signedOut, setSignedOut] = useState<{ google: boolean } | null>(null);
+  const [signedOut, setSignedOut] = useState<AuthConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -41,8 +42,10 @@ export default function YourWorld() {
     } catch (problem) {
       if (problem instanceof ApiError && problem.status === 401) {
         // No session, or it ended. This screen must not depend on anything that needs one.
-        const config = await getAuthConfig().catch(() => ({ google: false }));
-        setSignedOut({ google: config.google });
+        const config = await getAuthConfig().catch(() => null);
+        setSignedOut(
+          config ?? { google: false, dev_login: false, terms_version: '', minimum_age: 16, privacy_url: '', terms_url: '' },
+        );
         return;
       }
       setError('Can’t reach your world right now. Pull down to try again.');
@@ -57,7 +60,7 @@ export default function YourWorld() {
     }, [load]),
   );
 
-  if (signedOut) return <SignedOut googleAvailable={signedOut.google} onSignedIn={load} />;
+  if (signedOut) return <SignedOut config={signedOut} onSignedIn={load} />;
 
   // Onboarding is for an empty world. With nothing connected but notes (or anything else)
   // still held, the user must be able to reach them, and the screen that deletes them.

@@ -16,6 +16,7 @@ export type ConnectionsView = components['schemas']['ConnectionsView'];
 export type SyncResult = components['schemas']['SyncResult'];
 export type PersonView = components['schemas']['PersonView'];
 export type AuthConfig = components['schemas']['AuthConfig'];
+export type ExportTicket = components['schemas']['ExportTicket'];
 export type SessionOut = components['schemas']['SessionOut'];
 export type Me = components['schemas']['Me'];
 export type Health = components['schemas']['Health'];
@@ -86,8 +87,14 @@ export const confirmSamePerson = (identifierId: string) =>
 export const markDifferentPerson = (identifierId: string, name: string) =>
   request<unknown>('POST', `/people/identifiers/${identifierId}/split`, { name });
 
-export const exchangeLoginCode = (code: string, verifier: string) =>
-  request<SessionOut>('POST', '/auth/session', { code, verifier });
+export const exchangeLoginCode = (code: string, verifier: string, termsVersion: string) =>
+  request<SessionOut>('POST', '/auth/session', {
+    code,
+    verifier,
+    terms_version: termsVersion,
+    age_confirmed: true, // sign-in cannot start without the attestation (src/signIn.ts)
+  });
+export const requestExport = () => request<ExportTicket>('POST', '/me/export');
 export const getAuthConfig = () => request<AuthConfig>('GET', '/auth/config');
 export const getMe = () => request<Me>('GET', '/auth/me');
 export const signOut = () => request<unknown>('POST', '/auth/logout');
