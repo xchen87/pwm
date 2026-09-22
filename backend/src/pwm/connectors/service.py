@@ -99,14 +99,18 @@ def sync(
     added = ingest(session, user, result.records, connector=connector.name, enqueue_job=False)
     page = int(connection.pages_synced or 0) + 1
     connection.pages_synced = 0 if not result.more else page
+    connection.unprocessed = int(connection.unprocessed or 0) + added
     connection.cursor = result.cursor
     connection.last_synced_at = clock.now()
     connection.status, connection.last_error = ("syncing" if result.more else "ok"), None
     # Rebuilding the world is a whole-mailbox pass. During a long first read it runs on the
     # first page (something to see within minutes), every tenth page, and the last; not on
-    # every page, which would make a 90-day read quadratic.
-    if added and (not result.more or page == 1 or page % PROCESS_EVERY == 0):
+    # every page, which would make a 90-day read quadratic. What counts is whether anything
+    # is *waiting*, not whether this page added it: a last page that adds nothing still
+    # owes a rebuild for the pages before it.
+    if connection.unprocessed and (not result.more or page == 1 or page % PROCESS_EVERY == 0):
         process_user(session, user, triager, extractor)
+        connection.unprocessed = 0
     if result.more:
         enqueue_sync(session, user, connector.name)
     return added

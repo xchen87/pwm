@@ -5,6 +5,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
 
 import { API_URL, exchangeLoginCode } from './api/client';
+import { enablePush } from './push';
 import { setToken } from './session';
 
 const VERIFIER_KEY = 'pwm.signin.verifier';
@@ -48,6 +49,8 @@ export function finishSignIn(code: string): Promise<void> {
       if (!verifier) throw new Error('This sign-in was not started here.');
       const session = await exchangeLoginCode(code, verifier);
       await setToken(session.token);
+      // If this phone already allows notifications, it should hear about briefs from now on.
+      void enablePush(false).catch(() => undefined);
     })();
     redeeming.set(code, pending);
   }

@@ -34,3 +34,9 @@ App variables are read by Expo at build time. Anything prefixed `EXPO_PUBLIC_` i
 | `EXPO_PUBLIC_API_URL` | `http://localhost:8000` | Base URL of the backend. An Android emulator reaches the host machine at `http://10.0.2.2:8000`; a physical phone needs the machine's LAN address. |
 
 Not yet used: push credentials (Slice 5). None of these will ever be `EXPO_PUBLIC_`.
+
+## Before a store build (app/app.json, app/eas.json)
+- `extra.eas.projectId`: from `eas init` (needs the Expo account). Push tokens cannot be obtained without it.
+- `ios.associatedDomains`: `["applinks:<api host>"]`; `android.intentFilters`: an `autoVerify` https filter for `<api host>` with paths `/auth`, `/brief/*`, `/assertion/*`. The same host must serve the `/.well-known` files above.
+- `eas.json` build profiles carry `EXPO_PUBLIC_API_URL`; replace `api.example.invalid`.
+- `assets/notification-icon.png` is a plain placeholder (white rounded square); replace with a designed 96×96 white-on-transparent icon.

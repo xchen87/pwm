@@ -840,3 +840,49 @@ def test_a_long_first_read_rebuilds_the_world_on_the_first_page_then_every_tenth
     assert pages == 11  # 104 messages, 10 per page, then one empty final page
     assert len(runs) == 3  # first page, tenth page, last page
     assert session.scalar(select(func.count()).where(Source.connector == "gmail")) == 104
+
+
+def test_a_last_page_that_adds_nothing_still_rebuilds_for_the_pages_before_it(
+    api: TestClient, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The regression the Slice 5 review found: pages between rebuilds were left unprocessed
+    forever when the final page happened to add nothing new."""
+    monkeypatch.setattr("pwm.connectors.gmail.PAGE_SIZE", 50)
+    user = signed_in_user(api, session)
+    run_all(session, *STAGES)  # full first read
+    # Google forgot the history id; 70 new messages arrive; the re-read's last pages re-list old mail.
+    fake.forget_history = True
+    for n in range(70):
+        fake.deliver(
+            SourceRecord(
+                id=f"late{n}", kind=SourceKind.EMAIL, observed_at=datetime(2026, 9, 11, 8, n % 60, tzinfo=UTC),
+                thread_id=f"tl{n}", sender=Party(name="Tom Okafor", address="tom.okafor@brightwave.example"),
+                recipients=(Party(name="Alex Rivera", address="alex.rivera@example.com"),),
+                subject=f"Late {n}", body=f"I'll send you file number {n} by Friday.", provider_labels=("INBOX",),
+            )
+        )  # fmt: skip
+    gmail = service.build_connector(session, user, "gmail")
+    for _ in range(10):
+        if (
+            not service.sync(session, user, gmail, *STAGES)
+            and not session.scalars(select(Job).where(Job.status == "pending")).first()
+        ):
+            pass
+        run_all(session, *STAGES)
+        if (
+            session.scalars(select(Connection).where(Connection.connector == "gmail")).one().status
+            == "ok"
+        ):
+            break
+    unprocessed = session.scalar(
+        select(func.count()).where(Source.connector == "gmail", Source.route.is_(None))
+    )
+    assert unprocessed == 0
+    assert (
+        session.scalars(select(Connection).where(Connection.connector == "gmail")).one().unprocessed
+        == 0
+    )
+    assert (
+        session.scalar(select(func.count()).where(Assertion.evidence_quote.contains("file number")))
+        == 70
+    )

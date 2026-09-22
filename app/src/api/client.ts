@@ -66,6 +66,7 @@ export const setCommitmentStatus = (id: string, status: CommitmentStatus) =>
 export const getHome = () => request<Home>('GET', '/home');
 export const recordVisit = () => request<unknown>('POST', '/visits');
 export const getLatestBrief = () => request<BriefView>('GET', '/briefs/latest');
+export const getBrief = (id: string) => request<BriefView>('GET', `/briefs/${id}`);
 export const generateBrief = () => request<BriefView>('POST', '/briefs?period=weekly');
 export const getNotifications = () => request<NotificationView[]>('GET', '/notifications');
 export const markNotificationsRead = () => request<unknown>('POST', '/notifications/read');

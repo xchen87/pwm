@@ -180,3 +180,85 @@ def test_app_link_files_appear_only_when_the_identities_are_configured(
     )
     android = client.get("/.well-known/assetlinks.json").json()
     assert android[0]["target"]["sha256_cert_fingerprints"] == ["AA:BB"]
+
+
+def test_a_phone_belongs_to_whoever_is_signed_in_on_it(
+    client: TestClient, session: Session, world: User
+) -> None:
+    from pwm.pipeline.store import ensure_user
+    from pwm.sources import Party
+
+    client.post("/devices", json={"push_token": TOKEN, "platform": "ios"})
+    other = ensure_user(session, Party(name="Other", address="other@example.com"))
+    session.add(
+        Device(
+            user_id=other.id,
+            push_token=TOKEN,
+            platform="ios",
+            registered_at=world.created_at,
+            last_seen_at=world.created_at,
+        )
+    )
+    session.commit()
+    client.post(
+        "/devices", json={"push_token": TOKEN, "platform": "ios"}
+    )  # this account signs in on the same phone
+    owners = session.scalars(select(Device.user_id).where(Device.push_token == TOKEN)).all()
+    assert owners == [world.id]
+
+
+def test_devices_per_user_are_bounded_and_pushes_are_chunked(
+    client: TestClient, session: Session, world: User
+) -> None:
+    from datetime import datetime
+
+    for n in range(8):
+        client.post(
+            "/devices", json={"push_token": f"ExponentPushToken[device{n:022d}]", "platform": "ios"}
+        )
+    assert len(session.scalars(select(Device)).all()) == 5
+
+    for n in range(200):
+        session.add(
+            Device(
+                user_id=world.id,
+                push_token=f"ExponentPushToken[bulk{n:024d}]",
+                platform="ios",
+                registered_at=world.created_at,
+                last_seen_at=world.created_at,
+            )
+        )
+    session.commit()
+    expo = StandInExpo()
+    service.generate(
+        session,
+        world,
+        TemplateBriefWriter(),
+        ExpoPushNotifier(expo.client(), "https://expo.test/send"),
+        "weekly",
+        datetime.fromisoformat(SINCE),
+    )
+    import json
+
+    assert len(expo.sent) == 3 and all(len(json.loads(p)) <= 100 for p in expo.sent)
+    assert all('"channelId":"default"' in p.decode().replace(" ", "") for p in expo.sent)
+
+
+def test_expo_answering_nonsense_does_not_lose_the_brief(
+    client: TestClient, session: Session, world: User
+) -> None:
+    from datetime import datetime
+
+    client.post("/devices", json={"push_token": TOKEN, "platform": "ios"})
+    html = httpx.Client(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, text="<html>gateway</html>"))
+    )
+    brief = service.generate(
+        session,
+        world,
+        TemplateBriefWriter(),
+        ExpoPushNotifier(html, "https://expo.test/send"),
+        "weekly",
+        datetime.fromisoformat(SINCE),
+    )
+    assert brief.items and len(session.scalars(select(Notification)).all()) == 1

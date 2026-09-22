@@ -1,35 +1,48 @@
-import { Stack } from 'expo-router';
+import * as Notifications from 'expo-notifications';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { unlock } from '../src/lock';
-
+import { lockEnabled, unlock } from '../src/lock';
+import { pathFromNotification } from '../src/push';
 import { color } from '../src/theme';
 
 export default function RootLayout() {
-  // Locked until the lock (if any) is passed; re-locked whenever the app comes back to the front.
-  const [locked, setLocked] = useState(true);
+  const router = useRouter();
+  // The lock is an overlay: the screens underneath stay mounted, so coming back from the
+  // background (or from the sign-in browser) returns to where the person was.
+  const [locked, setLocked] = useState(false);
+
   useEffect(() => {
-    const tryUnlock = () => unlock().then((ok) => setLocked(!ok), () => setLocked(true));
-    void tryUnlock();
+    let active = true;
+    const attempt = () =>
+      unlock().then(
+        (ok) => active && setLocked(!ok),
+        () => active && setLocked(true),
+      );
+    void attempt();
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void tryUnlock();
-      if (state === 'background') setLocked(true);
+      if (state === 'active') void attempt();
+      if (state === 'background') void lockEnabled().then((on) => active && on && setLocked(true));
     });
-    return () => subscription.remove();
+    return () => {
+      active = false;
+      subscription.remove();
+    };
   }, []);
 
-  if (locked) {
-    return (
-      <View style={styles.lock}>
-        <Text style={styles.lockTitle}>Your World</Text>
-        <Pressable onPress={() => unlock().then((ok) => setLocked(!ok))} accessibilityRole="button">
-          <Text style={styles.unlock}>Unlock</Text>
-        </Pressable>
-      </View>
-    );
-  }
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    // A tapped notification carries the path to open: on a cold start, and while running.
+    const open = (response: Notifications.NotificationResponse | null) => {
+      const path = pathFromNotification(response);
+      if (path) router.push(path as never);
+    };
+    void Notifications.getLastNotificationResponseAsync().then(open, () => undefined);
+    const listener = Notifications.addNotificationResponseReceivedListener(open);
+    return () => listener.remove();
+  }, [router]);
 
   return (
     <>
@@ -53,12 +66,30 @@ export default function RootLayout() {
         <Stack.Screen name="assertion/[id]" options={{ title: 'Where this came from' }} />
         <Stack.Screen name="edit/[id]" options={{ title: 'Edit', presentation: 'modal' }} />
       </Stack>
+      {locked && (
+        <View style={styles.lock}>
+          <Text style={styles.lockTitle}>Your World</Text>
+          <Pressable onPress={() => unlock().then((ok) => setLocked(!ok))} accessibilityRole="button">
+            <Text style={styles.unlock}>Unlock</Text>
+          </Pressable>
+        </View>
+      )}
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  lock: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 24, backgroundColor: color.ground },
+  lock: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 24,
+    backgroundColor: color.ground,
+  },
   lockTitle: { fontSize: 30, fontWeight: '700', color: color.ink },
   unlock: { fontSize: 17, fontWeight: '700', color: color.accent, padding: 12 },
 });

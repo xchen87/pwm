@@ -3,9 +3,15 @@
 A notification is a fixed generic title and a deep link, nothing else (threat model T8):
 lock screens and Expo's servers see no names, amounts or quotes. The in-app inbox row is
 written first, so a phone that is off still finds the notification when it opens the app.
-Expo tokens that come back as dead (the app was uninstalled) are dropped.
+
+Delivery is best effort and audited by outcome, never by content: what is logged is a
+count, a status code, or Expo's error name. Tokens Expo reports dead in the ticket are
+dropped at once. Expo reports most delivery failures later, in receipts, which are not
+fetched yet; a dead device is therefore dropped one push late, and Expo tolerates that.
 """
 
+import logging
+from collections.abc import Sequence
 from typing import Any
 
 import httpx
@@ -17,6 +23,9 @@ from pwm.db.models import Device, Notification, User
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 DEAD = {"DeviceNotRegistered"}
+BATCH = 100  # Expo's limit per request
+log = logging.getLogger("pwm.push")
+_shared = httpx.Client(timeout=5.0)
 
 
 class ExpoPushNotifier:
@@ -25,7 +34,7 @@ class ExpoPushNotifier:
     channel = "push"
 
     def __init__(self, http: httpx.Client | None = None, url: str = EXPO_PUSH_URL) -> None:
-        self._http, self._url = http or httpx.Client(timeout=15.0), url
+        self._http, self._url = http or _shared, url
 
     def notify(self, session: Session, user: User, title: str, deep_link: str) -> None:
         session.add(
@@ -38,20 +47,41 @@ class ExpoPushNotifier:
             )  # fmt: skip
         )
         devices = session.scalars(select(Device).where(Device.user_id == user.id)).all()
-        if not devices:
-            return
+        for start in range(0, len(devices), BATCH):
+            self._send(session, devices[start : start + BATCH], title, deep_link)
+
+    def _send(
+        self, session: Session, devices: Sequence[Device], title: str, deep_link: str
+    ) -> None:
         messages: list[dict[str, Any]] = [
-            {"to": d.push_token, "title": title, "data": {"url": deep_link}, "sound": "default"}
+            {
+                "to": d.push_token,
+                "title": title,
+                "data": {"url": deep_link},
+                "sound": "default",
+                "channelId": "default",
+            }
             for d in devices
         ]
         try:
             response = self._http.post(self._url, json=messages)
-        except httpx.HTTPError:
-            return  # the inbox row stands; push is best effort
-        if response.status_code != 200:
+            tickets = response.json().get("data") if response.status_code == 200 else None
+        except (httpx.HTTPError, ValueError):
+            log.warning("push: Expo unreachable or unreadable; %d device(s) not told", len(devices))
+            return  # the inbox row stands
+        if not isinstance(tickets, list):
+            log.warning(
+                "push: Expo answered %s; %d device(s) not told", response.status_code, len(devices)
+            )
             return
-        tickets = response.json().get("data") or []
+        dropped = 0
         for device, ticket in zip(devices, tickets, strict=False):
-            details = ticket.get("details") or {}
-            if ticket.get("status") == "error" and details.get("error") in DEAD:
+            if not isinstance(ticket, dict) or ticket.get("status") != "error":
+                continue
+            reason = str((ticket.get("details") or {}).get("error") or "unknown")
+            if reason in DEAD:
                 session.delete(device)
+                dropped += 1
+            else:
+                log.warning("push: ticket error %s", reason)
+        log.info("push: %d device(s), %d dropped as dead", len(devices), dropped)

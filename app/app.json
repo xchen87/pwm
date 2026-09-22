@@ -34,7 +34,8 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png"
+          "icon": "./assets/notification-icon.png",
+          "color": "#2F5D50"
         }
       ],
       [
@@ -47,7 +48,6 @@
     "scheme": "pwm",
     "extra": {
       "eas": {}
-    },
-    "_notes": "Fill in before a store build: extra.eas.projectId (from `eas init`), ios.associatedDomains [\"applinks:<api host>\"], android.intentFilters (autoVerify https to <api host> /auth, /brief/*, /assertion/*). The same host must serve /.well-known files: docs/env.md."
+    }
   }
 }

@@ -298,6 +298,8 @@ class Connection(Base):
     last_error: Mapped[str | None] = mapped_column(String(64))
     # Pages read so far in a multi-page first read; 0 once caught up.
     pages_synced: Mapped[int] = mapped_column(default=0)
+    # Records ingested since the world was last rebuilt from them.
+    unprocessed: Mapped[int] = mapped_column(default=0)
 
 
 class OAuthToken(Base):

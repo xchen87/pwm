@@ -7,6 +7,7 @@ from pwm.api.deps import CurrentUser, DbSession
 from pwm.db.models import Device
 
 router = APIRouter()
+MAX_DEVICES = 5
 
 
 class DeviceIn(BaseModel):
@@ -20,10 +21,21 @@ class DeviceIn(BaseModel):
 @router.post("/devices")
 def register(body: DeviceIn, session: DbSession, user: CurrentUser) -> dict[str, str]:
     """Called whenever the app has a push token: on first run and after every reinstall."""
+    # A phone belongs to whoever is signed in on it now. Rows another account left behind
+    # (a sign-out that never reached the server) would make this phone buzz for that account.
+    session.execute(
+        delete(Device).where(Device.push_token == body.push_token, Device.user_id != user.id)
+    )
     device = session.scalar(
         select(Device).where(Device.user_id == user.id, Device.push_token == body.push_token)
     )
     if device is None:
+        # Bounded: the oldest devices make room. Nobody carries more than a few phones.
+        others = session.scalars(
+            select(Device).where(Device.user_id == user.id).order_by(Device.last_seen_at.desc())
+        ).all()
+        for stale in others[MAX_DEVICES - 1 :]:
+            session.delete(stale)
         device = Device(
             user_id=user.id, push_token=body.push_token, platform=body.platform,
             registered_at=clock.now(), last_seen_at=clock.now(),

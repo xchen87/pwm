@@ -24,7 +24,7 @@ Working constraint (founder, 2026-09-21): reach a showable, demo-ready MVP **wit
 | Slice 3 — Ask Your World + Remember / Correct / Forget | done; independently reviewed, findings fixed | same |
 | Demo readiness — onboarding, connections/disconnect/delete, same-person confirmation, demo launcher and script, in-browser checks | done; independently reviewed, findings fixed | commit `926d450` + next; verify green (122 tests, 87 functional checks incl. the built app in headless Chrome) |
 | Slice 4 — accounts, real Gmail/Calendar | **built against a stand-in for Google; unverified against Google itself**; two independent reviews, findings fixed; merged | `master`; verify green |
-| Slice 5 — phone delivery | push, device registration, deep links, app lock, app-link plumbing and store config **built and tested against a stand-in for Expo**; independent review in progress. **Never run on a phone**: builds, push tokens and app links need the founder's Expo / Apple / Google identities | `master`; verify green |
+| Slice 5 — phone delivery | push, device registration, deep links, app lock, app-link plumbing and store config **built and tested against a stand-in for Expo**; independently reviewed, findings fixed. **Never run on a phone**: builds, push tokens and app links need the founder's Expo / Apple / Google identities | `master`; verify green |
 | Live LLM evaluation | blocked: **needs founder** (API key + spend approval) | |
 
 ## Waiting on the founder
@@ -255,3 +255,24 @@ Could not break: challenge enforcement and constant-time comparison; login CSRF;
 **Slice 5 — phone delivery, the parts a laptop can build.** Push through Expo behind the existing `Notifier` (inbox row first, generic title, dead tokens dropped, Expo down loses nothing); device registration and unregistration on sign-out; `pwm://brief/<id>` deep links with an owner-checked `GET /briefs/{id}`; `/.well-known` app-link files served from configuration (D72, the remedy for D69); optional biometric app lock; `app.json`/`eas.json` with the identifiers and a note listing what to fill in. A first read now rebuilds the world on the first page, every tenth, and the last, instead of on every page (D74). Notifications carry an insertion sequence so "newest first" holds under a pinned clock. Decisions D71–D74.
 - **Nothing here has run on a phone.** Push tokens need an EAS project id; app links need Apple/Google identities; the lock needs biometrics. All of that is the founder's, and the code steps aside quietly without it.
 - `scripts/verify.sh`: **ALL GREEN** — 300 backend/eval tests, 8 app tests, 145 functional checks.
+
+**Slice 5 independent review.** A seventh reviewer examined `7630ecd..7904c60`. 12 findings (2 high). Dispositions:
+
+| # | Sev | Finding | Disposition |
+|---|---|---|---|
+| 1 | high | The new rebuild cadence was a **regression**: pages between rebuilds were ingested but never processed if the final page happened to add nothing (reproduced twice with the fake Gmail); the connection said `ok` | **Fixed.** A connection counts what is waiting since its last rebuild; the cadence acts on that, so a last page that adds nothing still rebuilds for the pages before it. Test with the reviewer's scenario (history forgotten, 70 late messages, empty tail pages). |
+| 2 | high | Tapping a push never opened anything: nothing in the app read the notification's deep link | **Fixed.** Cold-start and foreground notification responses route to the path in `data.url` (our scheme only). The announced brief is opened by id, not "latest". Unrun on a device. |
+| 3 | med | The lock unmounted the whole navigator on every background, lock on or off (web: switching tabs lost typed text) | **Fixed.** The lock is an overlay above the always-mounted screens, and re-locks only when the lock is on. |
+| 4 | med | After an app restart, sign-out could not unregister the phone; a second account on the same phone would buzz for the first | **Fixed.** Token persisted on the device; server-side a token belongs to one user (other accounts' rows are removed on register); registration happens quietly after sign-in when permission already exists. |
+| 5 | low-med | Expo answering 200 with a non-JSON body crashed brief generation; nothing was logged | **Fixed.** Outcomes logged by count and error name, never content. |
+| 6 | low-med | Dead tokens are mostly reported in receipts, which are never fetched; D71 overstated | **Documented** in code and D71 corrected; receipts left for when push has run at all. |
+| 7 | low | No per-user device cap; >100 devices made one oversized request | **Fixed.** Five devices per user (oldest evicted); requests chunked by 100. |
+| 8 | low | `_notes` key failed Expo's config schema | **Fixed** (notes moved here and to env docs). |
+| 9 | low | The Android notification icon was the coloured app icon (rendered as a white square); no channel id | **Fixed.** A white-on-transparent placeholder icon (a designed one is still needed); `channelId: default`. |
+| 10 | low | Tapping opened the latest brief, not the announced one | **Fixed** (see 2). |
+| 11 | low | A fresh 15-second HTTP client per request, inside the transaction | **Fixed.** Shared client, 5-second timeout. |
+| 12 | low | A malformed fingerprint list stops the process at startup | **Accepted**: fail-fast with the field named is the right behaviour for an operator error. |
+
+Also found by the gate, not the reviewer: a patch had written a literal `\n` into `app.json`, which broke the web build; the functional test caught it.
+
+- `scripts/verify.sh`: **ALL GREEN** — 304 backend/eval tests, 8 app tests, 145 functional checks.

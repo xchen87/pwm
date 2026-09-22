@@ -155,7 +155,7 @@ export default function Settings() {
         <Button
           label="Allow notifications"
           onPress={() =>
-            enablePush().then(
+            enablePush(true).then(
               (on) => setPush(on ? 'On for this phone.' : 'Not available here (a real phone with a store build is needed).'),
               () => setPush('That didn’t work.'),
             )

@@ -5,14 +5,13 @@ import { StyleSheet, Text, View } from 'react-native';
 import { recordEvent } from '../../src/api/client';
 import { color } from '../../src/theme';
 
-/** Where a notification's deep link (pwm://brief/<id>) lands. The brief screen shows the
- * latest brief, which is the one that was announced; the tap itself is counted. */
+/** Where a notification's deep link (pwm://brief/<id>) lands: the brief that was announced. */
 export default function BriefFromNotification() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   useEffect(() => {
     void recordEvent('notification_opened', id);
-    router.replace('/brief');
+    router.replace({ pathname: '/brief', params: { id } });
   }, [id, router]);
   return (
     <View style={styles.screen}>

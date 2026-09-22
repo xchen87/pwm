@@ -1,10 +1,11 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, Text } from 'react-native';
 
 import {
   type BriefView,
   generateBrief,
+  getBrief,
   getLatestBrief,
   markNotificationsRead,
   recordEvent,
@@ -15,6 +16,7 @@ import { color, space } from '../../src/theme';
 
 export default function WorldBrief() {
   const router = useRouter();
+  const { id } = useLocalSearchParams<{ id?: string }>(); // the announced brief, when opened from a notification
   const [brief, setBrief] = useState<BriefView | null>(null);
   const [missing, setMissing] = useState(false);
   const [rated, setRated] = useState<Record<string, boolean>>({});
@@ -31,14 +33,14 @@ export default function WorldBrief() {
 
   useFocusEffect(
     useCallback(() => {
-      getLatestBrief().then(show, (problem: Error) => {
+      (typeof id === 'string' ? getBrief(id) : getLatestBrief()).then(show, (problem: Error) => {
         // "No brief yet" is an answer; a network failure is not the same thing.
         if (/no brief yet/i.test(problem.message)) {
           setBrief(null); // it may have been removed since this screen last showed it
           setMissing(true);
         } else setError('Can’t reach your world right now.');
       });
-    }, []),
+    }, [id]),
   );
 
   const create = async () => {
