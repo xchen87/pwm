@@ -23,9 +23,9 @@ Working constraint (founder, 2026-09-21): reach a showable, demo-ready MVP **wit
 | Slice 2 — What changed + World Brief | done; independently reviewed, findings fixed | commits `00a624e` + review-fix commit; verify green |
 | Slice 3 — Ask Your World + Remember / Correct / Forget | done; independently reviewed, findings fixed | same |
 | Demo readiness — onboarding, connections/disconnect/delete, same-person confirmation, demo launcher and script, in-browser checks | done; independently reviewed, findings fixed | commit `926d450` + next; verify green (122 tests, 87 functional checks incl. the built app in headless Chrome) |
-| Slice 4 — accounts, real Gmail/Calendar | **built against a stand-in for Google; unverified against Google itself**; two independent reviews, findings fixed; merged | `master`; verify green |
-| Beta readiness — consent, legal pages, export, DPIA outline, checklist | built; independently reviewed, findings fixed; legal texts are **drafts for a lawyer** | `master`; verify green |
-| Slice 5 — phone delivery | push, device registration, deep links, app lock, app-link plumbing and store config **built and tested against a stand-in for Expo**; independently reviewed, findings fixed. **Never run on a phone**: builds, push tokens and app links need the founder's Expo / Apple / Google identities | `master`; verify green |
+| Slice 4 — accounts, real Gmail/Calendar | **built against a stand-in for Google; unverified against Google itself**; two independent reviews, findings fixed; merged | `main`; verify green |
+| Beta readiness — consent, legal pages, export, DPIA outline, checklist | built; independently reviewed, findings fixed; legal texts are **drafts for a lawyer** | `main`; verify green |
+| Slice 5 — phone delivery | push, device registration, deep links, app lock, app-link plumbing and store config **built and tested against a stand-in for Expo**; independently reviewed, findings fixed. **Never run on a phone**: builds, push tokens and app links need the founder's Expo / Apple / Google identities | `main`; verify green |
 | Live LLM evaluation | blocked: **needs founder** (API key + spend approval) | |
 
 ## Waiting on the founder
@@ -41,6 +41,7 @@ None of these blocks the demo. Each one is a hard stop for the step named, and n
 | **Open the gates or not**: passive Decision Memory, Customer Advocate drafts | Product scope is yours (CLAUDE.md). | Slices 7–8. Evidence so far: decisions are rare even in the synthetic mail (5 in 122), and consumer issues already surface as brief items. |
 
 ## How to resume
+0. Branch `main` (tracked on `origin/main`); the merged `slice-4` branch can be deleted.
 1. Read this file's status table, then the last log entry.
 2. `scripts/verify.sh` must be green before and after any change.
 3. `scripts/demo.sh --loaded` and `docs/demo-script.md` show what exists.
@@ -251,7 +252,7 @@ Could not break: challenge enforcement and constant-time comparison; login CSRF;
 
 **Reviews to date: six.** 86 ranked findings. Each round found fewer and less severe problems in the code it covered, but every round found *something*, and twice found that a previous fix did not hold. Slice 4 has also never touched Google. Both facts argue for treating first contact with real accounts as a test phase, not a launch.
 
-**Merged.** `slice-4` fast-forwarded into `master` at `7630ecd`. From here on, work is committed directly to `master` (founder's instruction).
+**Merged.** `slice-4` fast-forwarded into `master` at `7630ecd`. From here on, work is committed directly to the main branch (founder's instruction); the branch was later renamed `main` and pushed to `origin` (github.com/xchen87/pwm).
 
 **Slice 5 — phone delivery, the parts a laptop can build.** Push through Expo behind the existing `Notifier` (inbox row first, generic title, dead tokens dropped, Expo down loses nothing); device registration and unregistration on sign-out; `pwm://brief/<id>` deep links with an owner-checked `GET /briefs/{id}`; `/.well-known` app-link files served from configuration (D72, the remedy for D69); optional biometric app lock; `app.json`/`eas.json` with the identifiers and a note listing what to fill in. A first read now rebuilds the world on the first page, every tenth, and the last, instead of on every page (D74). Notifications carry an insertion sequence so "newest first" holds under a pinned clock. Decisions D71–D74.
 - **Nothing here has run on a phone.** Push tokens need an EAS project id; app links need Apple/Google identities; the lock needs biometrics. All of that is the founder's, and the code steps aside quietly without it.
@@ -302,3 +303,5 @@ Also found by the gate, not the reviewer: a patch had written a literal `\n` int
 Legal texts: every statement the reviewer listed as unbacked was rewritten to what is true today (DPAs and zero retention as *conditions* we enforce before enabling a provider; revocation at the last Google source; encryption with the excerpts stated as stored in the clear; legal basis for the user's own data; cookies/local storage, automated decisions, breach notification, and in-app re-acceptance sections added). Operational claims that cannot be true in a repository (access restrictions, backups) are now on the checklist as things to make true before the URL goes to Google.
 
 - `scripts/verify.sh`: **ALL GREEN** — 310 backend/eval tests, 8 app tests, 155 functional checks.
+
+**Session close (2026-09-21).** Tree clean at `7203d02` on `main`, pushed to `origin/main`. Demo servers stopped; the local Postgres container is left running (`docker compose down` to stop it). Eight independent reviews to date, 122 ranked findings, all dispositioned above. Next steps are all the founder's: see "Waiting on the founder" and `docs/beta-checklist.md`.
